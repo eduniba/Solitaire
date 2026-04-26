@@ -4,16 +4,14 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>SolitAIre</title>
-<meta name="description" content="A beautiful Klondike Solitaire game with guaranteed winnable deals.">
 <meta name="theme-color" content="#1a5c38">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="SolitAIre">
+<link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="icon.png">
-<link rel="manifest" id="pwa-manifest">
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=DM+Mono:wght@400;500&display=swap');
   :root {
     --felt:#1a5c38; --felt-dark:#124228; --felt-light:#21714a;
     --card-w:70px; --card-h:98px; --radius:6px;
@@ -93,7 +91,7 @@
 </head>
 <body>
 <header>
-  <div class="title">Solitaire</div>
+  <div class="title">SolitAIre</div>
   <div class="stats">
     <div><div style="margin-bottom:2px">MOVES</div><div class="stat-val" id="moves-display">0</div></div>
     <div><div style="margin-bottom:2px">TIME</div><div class="stat-val" id="time-display">0:00</div></div>
@@ -647,7 +645,10 @@ function renderStock(){
     cnt.style.cssText='position:absolute;bottom:3px;right:5px;font-size:9px;color:rgba(255,255,255,0.55);pointer-events:none;text-shadow:0 1px 3px rgba(0,0,0,0.9)';
     cnt.textContent=stock.length;slot.appendChild(cnt);
   }else{
-    slot.innerHTML='<div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:26px;color:rgba(255,255,255,0.18);cursor:pointer">↺</div>';
+    const _recycleDiv=document.createElement('div');
+    _recycleDiv.style.cssText='position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:26px;color:rgba(255,255,255,0.18);cursor:pointer';
+    _recycleDiv.textContent='↺';
+    slot.appendChild(_recycleDiv);
     slot.onclick=resetStock;
   }
   el.appendChild(slot);
@@ -676,7 +677,10 @@ function renderFoundations(){
     el.style.height=totalH+'px';el.style.position='relative';
     let slot=document.createElement('div');slot.className='slot foundation';
     slot.style.cssText='position:absolute;top:0;left:0;';
-    slot.innerHTML=`<span style="font-size:24px;opacity:0.12">${F_SUITS[i]}</span>`;
+    const _suitSpan=document.createElement('span');
+    _suitSpan.style.cssText='font-size:24px;opacity:0.12';
+    _suitSpan.textContent=F_SUITS[i];
+    slot.appendChild(_suitSpan);
     el.appendChild(slot);
     for(let j=0;j<f.length;j++){
       let card=f[j];let ce=makeCardEl(card);
@@ -847,48 +851,7 @@ function launchConfetti(){
 
 document.body.addEventListener('touchmove',e=>e.preventDefault(),{passive:false});
 newGame();
-
-// ── PWA: inline manifest ─────────────────────────────────────────────────────
-const _manifest = {
-  name: "SolitAIre",
-  short_name: "SolitAIre",
-  description: "Klondike Solitaire with guaranteed winnable deals",
-  start_url: "./",
-  display: "standalone",
-  orientation: "portrait",
-  background_color: "#1a5c38",
-  theme_color: "#1a5c38",
-  icons: [
-    { src: "icon.png", sizes: "512x512", type: "image/png", purpose: "any maskable" }
-  ]
-};
-const _mBlob = new Blob([JSON.stringify(_manifest)], {type:'application/json'});
-const _mURL = URL.createObjectURL(_mBlob);
-document.getElementById('pwa-manifest').setAttribute('href', _mURL);
-
-// ── PWA: inline service worker ────────────────────────────────────────────────
-const _swCode = `
-const CACHE = 'solitaire-v1';
-const ASSETS = [self.location.href.replace('sw-inline.js',''), './icon.png'];
-self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).catch(()=>{}));
-  self.skipWaiting();
-});
-self.addEventListener('activate', e => {
-  e.waitUntil(caches.keys().then(keys =>
-    Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k)))
-  ));
-  self.clients.claim();
-});
-self.addEventListener('fetch', e => {
-  e.respondWith(caches.match(e.request).then(r => r || fetch(e.request).catch(()=>{})));
-});
-`;
-if('serviceWorker' in navigator){
-  const _swBlob = new Blob([_swCode], {type:'text/javascript'});
-  const _swURL = URL.createObjectURL(_swBlob);
-  navigator.serviceWorker.register(_swURL, {scope:'./'}).catch(()=>{});
-}
+if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
 </script>
 </body>
 </html>
