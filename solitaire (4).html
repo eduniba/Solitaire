@@ -1,0 +1,894 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>SolitAIre</title>
+<meta name="description" content="A beautiful Klondike Solitaire game with guaranteed winnable deals.">
+<meta name="theme-color" content="#1a5c38">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="SolitAIre">
+<link rel="apple-touch-icon" href="icon.png">
+<link rel="manifest" id="pwa-manifest">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=DM+Mono:wght@400;500&display=swap');
+  :root {
+    --felt:#1a5c38; --felt-dark:#124228; --felt-light:#21714a;
+    --card-w:70px; --card-h:98px; --radius:6px;
+    --gold:#d4af37; --shadow:0 4px 14px rgba(0,0,0,0.45);
+  }
+  *{box-sizing:border-box;margin:0;padding:0;user-select:none;}
+  html{overscroll-behavior:none;}
+  body{
+    background:var(--felt);
+    background-image:radial-gradient(ellipse at 30% 20%,rgba(255,255,255,0.04) 0%,transparent 60%),
+      repeating-linear-gradient(45deg,transparent,transparent 2px,rgba(0,0,0,0.03) 2px,rgba(0,0,0,0.03) 4px);
+    min-height:100vh; font-family:'DM Mono',monospace; overflow-x:hidden;
+  }
+  header{display:flex;align-items:center;justify-content:space-between;padding:14px 20px 10px;border-bottom:1px solid rgba(255,255,255,0.08);}
+  .title{font-family:'Playfair Display',serif;color:var(--gold);font-size:24px;letter-spacing:2px;text-shadow:0 2px 8px rgba(0,0,0,0.4);}
+  .stats{display:flex;gap:20px;color:rgba(255,255,255,0.7);font-size:11px;letter-spacing:1px;}
+  .stat-val{color:#fff;font-weight:500;font-size:13px;}
+  .btn{background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);color:#fff;padding:6px 14px;border-radius:4px;cursor:pointer;font-family:'DM Mono',monospace;font-size:11px;letter-spacing:1px;transition:background 0.15s;}
+  .btn:hover{background:rgba(255,255,255,0.2);}
+  .btn:disabled{opacity:0.35;cursor:default;}
+  .btn.solution-active{background:rgba(212,175,55,0.3);border-color:var(--gold);}
+
+  .mode-toggle{display:flex;align-items:center;gap:8px;font-size:11px;color:rgba(255,255,255,0.6);letter-spacing:1px;}
+  .toggle-track{width:38px;height:20px;border-radius:10px;background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.2);position:relative;cursor:pointer;transition:background 0.2s;}
+  .toggle-track.on{background:rgba(212,175,55,0.55);border-color:var(--gold);}
+  .toggle-thumb{position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#fff;transition:left 0.2s;box-shadow:0 1px 4px rgba(0,0,0,0.3);}
+  .toggle-track.on .toggle-thumb{left:20px;}
+  .mode-label{min-width:58px;font-size:10px;}
+
+  #game{padding:14px 16px;}
+  #top-row{display:flex;gap:10px;margin-bottom:14px;align-items:flex-start;}
+  #tableau-row{display:flex;gap:10px;align-items:flex-start;}
+  .zone-label{font-size:8px;color:rgba(255,255,255,0.3);letter-spacing:2px;text-transform:uppercase;text-align:center;margin-bottom:3px;}
+  .pile{width:var(--card-w);min-height:var(--card-h);position:relative;}
+  .slot{width:var(--card-w);height:var(--card-h);border:2px dashed rgba(255,255,255,0.15);border-radius:var(--radius);position:relative;}
+  .slot.foundation{display:flex;align-items:center;justify-content:center;}
+  #spacer{flex:1;}
+  .card{width:var(--card-w);height:var(--card-h);border-radius:var(--radius);position:absolute;cursor:pointer;box-shadow:var(--shadow);-webkit-tap-highlight-color:transparent;overflow:hidden;}
+  .card img{width:100%;height:100%;display:block;pointer-events:none;border-radius:var(--radius);}
+  .card.face-up{cursor:grab;}
+  .card.face-up:active{cursor:grabbing;}
+  .card.drag-source{visibility:hidden;}
+  .card.dragging{opacity:0.82;z-index:9999;box-shadow:0 14px 36px rgba(0,0,0,0.65);pointer-events:none;}
+  .card.hint-glow{box-shadow:0 0 0 3px #f9e2af, 0 0 12px 4px rgba(249,226,175,0.7);}
+  .tableau-col{position:relative;width:var(--card-w);}
+
+  /* generating overlay */
+  #generating{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9990;align-items:center;justify-content:center;flex-direction:column;gap:14px;}
+  #generating.show{display:flex;}
+  .gen-box{background:#1a2e22;border:1px solid rgba(212,175,55,0.3);border-radius:10px;padding:28px 40px;text-align:center;}
+  .gen-title{font-family:'Playfair Display',serif;color:var(--gold);font-size:20px;margin-bottom:8px;}
+  .gen-sub{color:rgba(255,255,255,0.5);font-size:11px;letter-spacing:1px;}
+  .spinner{width:28px;height:28px;border:3px solid rgba(212,175,55,0.2);border-top-color:var(--gold);border-radius:50%;animation:spin 0.8s linear infinite;margin:10px auto 0;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+
+  #autocomplete-popup{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9998;align-items:center;justify-content:center;}
+  #autocomplete-popup.show{display:flex;}
+  .ac-box{background:#fdfaf5;border-radius:12px;padding:32px 44px;text-align:center;box-shadow:0 24px 64px rgba(0,0,0,0.5);max-width:300px;}
+  .ac-title{font-family:'Playfair Display',serif;font-size:24px;color:var(--felt-dark);margin-bottom:6px;}
+  .ac-sub{color:#666;font-size:12px;margin-bottom:20px;line-height:1.5;}
+  .ac-btns{display:flex;gap:10px;justify-content:center;}
+  .ac-yes{background:var(--felt);color:#fff;border:none;padding:9px 24px;border-radius:6px;font-family:'DM Mono',monospace;font-size:12px;cursor:pointer;letter-spacing:1px;}
+  .ac-yes:hover{background:var(--felt-light);}
+  .ac-no{background:#eee;color:#444;border:none;padding:9px 24px;border-radius:6px;font-family:'DM Mono',monospace;font-size:12px;cursor:pointer;letter-spacing:1px;}
+  .ac-no:hover{background:#ddd;}
+
+  #win-screen{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:9999;align-items:center;justify-content:center;flex-direction:column;}
+  #win-screen.show{display:flex;}
+  .win-box{background:#fdfaf5;border-radius:12px;padding:44px 56px;text-align:center;box-shadow:0 24px 64px rgba(0,0,0,0.5);}
+  .win-title{font-family:'Playfair Display',serif;font-size:40px;color:var(--felt-dark);margin-bottom:8px;}
+  .win-sub{color:#666;font-size:12px;letter-spacing:1px;margin-bottom:24px;}
+  .win-btn{background:var(--felt);color:#fff;border:none;padding:11px 28px;border-radius:6px;font-family:'DM Mono',monospace;font-size:13px;cursor:pointer;letter-spacing:1px;}
+  .win-btn:hover{background:var(--felt-light);}
+  .confetti-piece{position:fixed;width:8px;height:8px;border-radius:2px;animation:fall linear forwards;z-index:10000;pointer-events:none;}
+  @keyframes fall{0%{transform:translateY(-20px) rotate(0deg);opacity:1;}100%{transform:translateY(110vh) rotate(720deg);opacity:0;}}
+</style>
+</head>
+<body>
+<header>
+  <div class="title">Solitaire</div>
+  <div class="stats">
+    <div><div style="margin-bottom:2px">MOVES</div><div class="stat-val" id="moves-display">0</div></div>
+    <div><div style="margin-bottom:2px">TIME</div><div class="stat-val" id="time-display">0:00</div></div>
+    <div><div style="margin-bottom:2px">SCORE</div><div class="stat-val" id="score-display">0</div></div>
+  </div>
+  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+    <div class="mode-toggle">
+      <span class="mode-label" id="mode-label">WINNABLE</span>
+      <div class="toggle-track on" id="mode-toggle" onclick="toggleMode()"><div class="toggle-thumb"></div></div>
+    </div>
+    <button class="btn" id="sol-btn" onclick="toggleSolution()" style="display:none">💡 SOLUTION</button>
+    <button class="btn" onclick="undoMove()">↩ UNDO</button>
+    <button class="btn" onclick="newGame()">NEW GAME</button>
+  </div>
+</header>
+
+<div id="game">
+  <div id="top-row">
+    <div style="display:flex;gap:10px">
+      <div><div class="zone-label">♠</div><div class="pile" id="f0"></div></div>
+      <div><div class="zone-label">♦</div><div class="pile" id="f1"></div></div>
+      <div><div class="zone-label">♣</div><div class="pile" id="f2"></div></div>
+      <div><div class="zone-label">♥</div><div class="pile" id="f3"></div></div>
+    </div>
+    <div id="spacer"></div>
+    <div><div class="zone-label">Stock</div><div class="pile" id="stock"></div></div>
+    <div><div class="zone-label">Waste</div><div class="pile" id="waste"></div></div>
+  </div>
+  <div id="tableau-row">
+    <div class="tableau-col" id="t0"></div>
+    <div class="tableau-col" id="t1"></div>
+    <div class="tableau-col" id="t2"></div>
+    <div class="tableau-col" id="t3"></div>
+    <div class="tableau-col" id="t4"></div>
+    <div class="tableau-col" id="t5"></div>
+    <div class="tableau-col" id="t6"></div>
+  </div>
+</div>
+
+<div id="generating">
+  <div class="gen-box">
+    <div class="gen-title">Finding a winnable deal…</div>
+    <div class="gen-sub">Solving before you play</div>
+    <div class="spinner"></div>
+  </div>
+</div>
+
+<div id="autocomplete-popup">
+  <div class="ac-box">
+    <div class="ac-title">Autocomplete?</div>
+    <div class="ac-sub">All cards are face-up.<br>Want me to finish the game?</div>
+    <div class="ac-btns">
+      <button class="ac-yes" onclick="doAutocomplete()">Yes, finish it</button>
+      <button class="ac-no" onclick="dismissAutocomplete()">No, I'll play</button>
+    </div>
+  </div>
+</div>
+
+<div id="win-screen">
+  <div class="win-box">
+    <div class="win-title">You Won!</div>
+    <div class="win-sub" id="win-stats"></div>
+    <button class="win-btn" onclick="newGame()">PLAY AGAIN</button>
+  </div>
+</div>
+
+<script>
+// ── Constants ─────────────────────────────────────────────────────────────────
+const F_SUITS=['♠','♦','♣','♥'];
+const CARD_BASE='https://deckofcardsapi.com/static/img/';
+const SUIT_CODE={'♠':'S','♥':'H','♦':'D','♣':'C'};
+const RANK_CODE={'A':'A','2':'2','3':'3','4':'4','5':'5','6':'6','7':'7','8':'8','9':'9','10':'0','J':'J','Q':'Q','K':'K'};
+const BACK_URL=CARD_BASE+'back.png';
+const cardImgUrl=c=>CARD_BASE+RANK_CODE[c.rank]+SUIT_CODE[c.suit]+'.png';
+const SUITS=['♠','♥','♦','♣'];
+const RANKS=['A','2','3','4','5','6','7','8','9','10','J','Q','K'];
+const RED=['♥','♦'];
+const isRed=s=>RED.includes(s);
+const ri=r=>RANKS.indexOf(r);
+const rnd=n=>Math.floor(Math.random()*n);
+const shuffle=a=>{for(let i=a.length-1;i>0;i--){let j=rnd(i+1);[a[i],a[j]]=[a[j],a[i]];}return a;};
+
+// ── Game state ────────────────────────────────────────────────────────────────
+let stock=[],waste=[],foundations=[[],[],[],[]],tableau=[[],[],[],[],[],[],[]];
+let moves=0,score=0,seconds=0,timer=null,history=[],dragState=null,dragSourceEls=[];
+let autocompleteOffered=false,winnableMode=true;
+let solutionMoves=[],solutionStep=0,solutionActive=false,solutionTimer=null;
+
+// ── Toggle ────────────────────────────────────────────────────────────────────
+function toggleMode(){
+  winnableMode=!winnableMode;
+  document.getElementById('mode-toggle').classList.toggle('on',winnableMode);
+  document.getElementById('mode-label').textContent=winnableMode?'WINNABLE':'RANDOM';
+}
+
+// ── Double-tap ────────────────────────────────────────────────────────────────
+let lastTapKey='',lastTapTime=0;
+const DTAP=350;
+function cardKey(c){return c.rank+c.suit;}
+function onCardTap(key,cb){
+  let now=Date.now();
+  if(lastTapKey===key&&now-lastTapTime<DTAP){lastTapKey='';lastTapTime=0;cb();}
+  else{lastTapKey=key;lastTapTime=now;}
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// SOLVER
+// Uses a greedy best-first search with state hashing to avoid loops.
+// State = compact string of all pile contents.
+// Moves tried in priority order:
+//   1. Flip hidden card (free move)
+//   2. Any card to foundation
+//   3. Stack move that uncovers a hidden card
+//   4. Draw from stock
+//   5. Any legal tableau move
+//   6. Reset waste to stock
+// Returns array of move objects if solvable, null if not (within budget).
+// ══════════════════════════════════════════════════════════════════════════════
+
+function encodeState(S){
+  // Compact encoding: each pile as rank+suit pairs, piles separated by |
+  let parts=[];
+  for(let i=0;i<4;i++) parts.push(S.fnd[i].map(c=>c.rank+c.suit[0]).join(','));
+  for(let i=0;i<7;i++) parts.push(S.tab[i].map(c=>(c.up?'':'-')+c.rank+c.suit[0]).join(','));
+  parts.push(S.stk.map(c=>c.rank+c.suit[0]).join(','));
+  parts.push(S.wst.map(c=>c.rank+c.suit[0]).join(','));
+  return parts.join('|');
+}
+
+function cloneState(S){
+  return {
+    fnd:S.fnd.map(f=>f.map(c=>({...c}))),
+    tab:S.tab.map(t=>t.map(c=>({...c}))),
+    stk:S.stk.map(c=>({...c})),
+    wst:S.wst.map(c=>({...c})),
+  };
+}
+
+function isWon(S){return S.fnd.every(f=>f.length===13);}
+
+function canFnd(card,S,fi){
+  let f=S.fnd[fi];
+  if(!f.length)return card.rank==='A'&&card.suit===F_SUITS[fi];
+  let top=f[f.length-1];
+  return top.suit===card.suit&&ri(card.rank)===ri(top.rank)+1;
+}
+function canTab(card,col,S){
+  let t=S.tab[col];
+  if(!t.length)return card.rank==='K';
+  let top=t[t.length-1];
+  if(!top.up)return false;
+  return isRed(top.suit)!==isRed(card.suit)&&ri(card.rank)===ri(top.rank)-1;
+}
+
+function getMoves(S){
+  let mvs=[];
+
+  // 1. Tableau top → foundation
+  for(let tc=0;tc<7;tc++){
+    let t=S.tab[tc]; if(!t.length)continue;
+    let card=t[t.length-1]; if(!card.up)continue;
+    for(let fi=0;fi<4;fi++){
+      if(canFnd(card,S,fi)) mvs.push({p:0,type:'tab-fnd',tc,fi});
+    }
+  }
+
+  // 2. Waste top → foundation
+  if(S.wst.length){
+    let card=S.wst[S.wst.length-1];
+    for(let fi=0;fi<4;fi++){
+      if(canFnd(card,S,fi)) mvs.push({p:0,type:'wst-fnd',fi});
+    }
+  }
+
+  // 3. Stack moves that uncover a hidden card (high priority)
+  for(let sc=0;sc<7;sc++){
+    let t=S.tab[sc]; if(!t.length)continue;
+    // Find first face-up card in column
+    let faceUpStart=t.findIndex(c=>c.up);
+    if(faceUpStart<=0)continue; // no hidden cards below or all face-up
+    let stack=t.slice(faceUpStart);
+    let card=stack[0];
+    for(let dc=0;dc<7;dc++){
+      if(dc===sc)continue;
+      if(canTab(card,dc,S)) mvs.push({p:1,type:'tab-tab',sc,dc,row:faceUpStart});
+    }
+  }
+
+  // 4. Waste top → tableau
+  if(S.wst.length){
+    let card=S.wst[S.wst.length-1];
+    for(let dc=0;dc<7;dc++){
+      if(canTab(card,dc,S)) mvs.push({p:2,type:'wst-tab',dc});
+    }
+  }
+
+  // 5. Draw from stock
+  if(S.stk.length) mvs.push({p:3,type:'draw'});
+
+  // 6. Any tableau stack → tableau (no uncover benefit)
+  for(let sc=0;sc<7;sc++){
+    let t=S.tab[sc]; if(!t.length)continue;
+    let faceUpStart=t.findIndex(c=>c.up);
+    if(faceUpStart<0)continue;
+    let stack=t.slice(faceUpStart);
+    let card=stack[0];
+    for(let dc=0;dc<7;dc++){
+      if(dc===sc)continue;
+      if(canTab(card,dc,S)&&!mvs.find(m=>m.type==='tab-tab'&&m.sc===sc&&m.dc===dc))
+        mvs.push({p:4,type:'tab-tab',sc,dc,row:faceUpStart});
+    }
+  }
+
+  // 7. Reset stock
+  if(!S.stk.length&&S.wst.length) mvs.push({p:5,type:'reset'});
+
+  // Sort by priority
+  mvs.sort((a,b)=>a.p-b.p);
+  return mvs;
+}
+
+function applyMove(S,mv){
+  let NS=cloneState(S);
+  if(mv.type==='tab-fnd'){
+    NS.fnd[mv.fi].push(NS.tab[mv.tc].pop());
+    // Flip top of source if face-down
+    let t=NS.tab[mv.tc];
+    if(t.length&&!t[t.length-1].up)t[t.length-1].up=true;
+  }else if(mv.type==='wst-fnd'){
+    NS.fnd[mv.fi].push(NS.wst.pop());
+  }else if(mv.type==='tab-tab'){
+    let stack=NS.tab[mv.sc].splice(mv.row);
+    NS.tab[mv.dc].push(...stack);
+    let t=NS.tab[mv.sc];
+    if(t.length&&!t[t.length-1].up)t[t.length-1].up=true;
+  }else if(mv.type==='wst-tab'){
+    NS.tab[mv.dc].push(NS.wst.pop());
+  }else if(mv.type==='draw'){
+    let c=NS.stk.pop();c.up=true;NS.wst.push(c);
+  }else if(mv.type==='reset'){
+    NS.stk=NS.wst.slice().reverse().map(c=>({...c,up:false}));NS.wst=[];
+  }
+  return NS;
+}
+
+// DFS with visited set and move budget
+function solve(initState,budget=8000){
+  let stack=[{S:initState,path:[]}];
+  let visited=new Set();
+  visited.add(encodeState(initState));
+  let iters=0;
+  while(stack.length&&iters<budget){
+    iters++;
+    let {S,path}=stack.pop();
+    let mvs=getMoves(S);
+    for(let mv of mvs){
+      let NS=applyMove(S,mv);
+      if(isWon(NS)) return [...path,mv];
+      let key=encodeState(NS);
+      if(!visited.has(key)){
+        visited.add(key);
+        stack.push({S:NS,path:[...path,mv]});
+      }
+    }
+  }
+  return null;
+}
+
+// Convert game state to solver state
+function gameToSolverState(){
+  return {
+    fnd:foundations.map(f=>f.map(c=>({...c,up:true}))),
+    tab:tableau.map(t=>t.map(c=>({...c,up:c.faceUp}))),
+    stk:stock.map(c=>({...c,up:false})),
+    wst:waste.map(c=>({...c,up:true})),
+  };
+}
+
+// ── Generate random deal ──────────────────────────────────────────────────────
+function randomDeal(){
+  let deck=[];
+  for(let s of SUITS)for(let r of RANKS)deck.push({suit:s,rank:r,faceUp:false});
+  shuffle(deck);
+  let tab=[[],[],[],[],[],[],[]];
+  for(let col=0;col<7;col++)for(let row=0;row<=col;row++){let c=deck.pop();c.faceUp=(row===col);tab[col].push(c);}
+  return{tab,stk:deck};
+}
+
+// ── Generate guaranteed winnable deal (try random deals until solver passes) ──
+async function winnableDeal(){
+  // Run in chunks to keep UI responsive
+  let attempts=0;
+  while(true){
+    attempts++;
+    let deal=randomDeal();
+    // Convert to solver state
+    let S={
+      fnd:[[],[],[],[]],
+      tab:deal.tab.map(t=>t.map(c=>({...c,up:c.faceUp}))),
+      stk:deal.stk.map(c=>({...c,up:false})),
+      wst:[],
+    };
+    let sol=solve(S,12000);
+    if(sol!==null) return{deal,solution:sol,attempts};
+    // Yield to UI every 3 attempts
+    if(attempts%3===0) await new Promise(r=>setTimeout(r,0));
+  }
+}
+
+// ── New game ──────────────────────────────────────────────────────────────────
+function saveHistory(){
+  history.push({
+    stock:stock.map(c=>({...c})),waste:waste.map(c=>({...c})),
+    foundations:foundations.map(f=>f.map(c=>({...c}))),
+    tableau:tableau.map(t=>t.map(c=>({...c}))),
+    moves,score
+  });
+  if(history.length>50)history.shift();
+}
+
+function undoMove(){
+  if(!history.length)return;
+  stopSolution();
+  let s=history.pop();
+  stock=s.stock;waste=s.waste;foundations=s.foundations;tableau=s.tableau;
+  moves=s.moves;score=s.score;
+  render();
+}
+
+async function newGame(){
+  clearInterval(timer);stopSolution();
+  foundations=[[],[],[],[]];waste=[];moves=0;score=0;seconds=0;history=[];
+  autocompleteOffered=false;solutionMoves=[];solutionStep=0;
+  document.getElementById('win-screen').classList.remove('show');
+  document.getElementById('autocomplete-popup').classList.remove('show');
+  document.getElementById('sol-btn').style.display='none';
+  document.getElementById('sol-btn').classList.remove('solution-active');
+
+  if(winnableMode){
+    document.getElementById('generating').classList.add('show');
+    let result=await winnableDeal();
+    document.getElementById('generating').classList.remove('show');
+    tableau=result.deal.tab;
+    stock=result.deal.stk;
+    solutionMoves=result.solution;
+    solutionStep=0;
+    document.getElementById('sol-btn').style.display='';
+  }else{
+    let deal=randomDeal();
+    tableau=deal.tab;stock=deal.stk;
+  }
+
+  timer=setInterval(()=>{
+    seconds++;
+    let m=Math.floor(seconds/60),s=seconds%60;
+    document.getElementById('time-display').textContent=m+':'+(s<10?'0':'')+s;
+  },1000);
+  render();
+}
+
+// ── Solution playback ─────────────────────────────────────────────────────────
+function toggleSolution(){
+  if(solutionActive){stopSolution();}
+  else{startSolution();}
+}
+
+function startSolution(){
+  if(!solutionMoves.length)return;
+  solutionActive=true;
+  document.getElementById('sol-btn').classList.add('solution-active');
+  document.getElementById('sol-btn').textContent='⏹ STOP';
+  playNextSolutionStep();
+}
+
+function stopSolution(){
+  solutionActive=false;
+  clearTimeout(solutionTimer);
+  document.getElementById('sol-btn').classList.remove('solution-active');
+  document.getElementById('sol-btn').textContent='💡 SOLUTION';
+  // Remove any lingering glows
+  document.querySelectorAll('.hint-glow').forEach(el=>el.classList.remove('hint-glow'));
+}
+
+function playNextSolutionStep(){
+  if(!solutionActive)return;
+  if(solutionStep>=solutionMoves.length){stopSolution();return;}
+
+  // Flash the relevant card first, then apply after short delay
+  let mv=solutionMoves[solutionStep];
+  highlightMove(mv);
+
+  solutionTimer=setTimeout(()=>{
+    if(!solutionActive)return;
+    applySolutionMove(mv);
+    solutionStep++;
+    render();
+    solutionTimer=setTimeout(()=>playNextSolutionStep(),420);
+  },500);
+}
+
+function highlightMove(mv){
+  document.querySelectorAll('.hint-glow').forEach(el=>el.classList.remove('hint-glow'));
+  let el=null;
+  if(mv.type==='tab-fnd'||mv.type==='tab-tab'){
+    let colEl=document.getElementById('t'+mv.tc||mv.sc);
+    // For tab-tab highlight the stack top (first face-up card)
+    let src=mv.type==='tab-tab'?mv.sc:mv.tc;
+    let colEl2=document.getElementById('t'+src);
+    let cards=colEl2?colEl2.querySelectorAll('.card'):[];
+    let row=mv.type==='tab-tab'?mv.row:tableau[src].length-1;
+    if(cards[row])cards[row].classList.add('hint-glow');
+  }else if(mv.type==='wst-fnd'||mv.type==='wst-tab'){
+    let wEl=document.getElementById('waste').querySelector('.card');
+    if(wEl)wEl.classList.add('hint-glow');
+  }
+}
+
+function applySolutionMove(mv){
+  saveHistory();
+  if(mv.type==='tab-fnd'){
+    let card=tableau[mv.tc].pop();
+    flipTop(mv.tc);
+    foundations[mv.fi].push(card);score+=10;moves++;
+  }else if(mv.type==='wst-fnd'){
+    foundations[mv.fi].push(waste.pop());score+=10;moves++;
+  }else if(mv.type==='tab-tab'){
+    let stack=tableau[mv.sc].splice(mv.row);
+    tableau[mv.dc].push(...stack);
+    flipTop(mv.sc);score+=5;moves++;
+  }else if(mv.type==='wst-tab'){
+    tableau[mv.dc].push(waste.pop());score+=5;moves++;
+  }else if(mv.type==='draw'){
+    let c=stock.pop();c.faceUp=true;waste.push(c);moves++;
+  }else if(mv.type==='reset'){
+    stock=waste.slice().reverse().map(c=>({...c,faceUp:false}));waste=[];
+    score=Math.max(0,score-100);moves++;
+  }
+}
+
+function flipTop(col){
+  let t=tableau[col];
+  if(t.length&&!t[t.length-1].faceUp){t[t.length-1].faceUp=true;score+=5;}
+}
+
+// ── Rules ─────────────────────────────────────────────────────────────────────
+function canPlaceOnFoundation(card,fi){
+  let f=foundations[fi];
+  if(!f.length)return card.rank==='A'&&card.suit===F_SUITS[fi];
+  let top=f[f.length-1];
+  return top.suit===card.suit&&ri(card.rank)===ri(top.rank)+1;
+}
+function canPlaceOnTableau(cards,col){
+  let tc=tableau[col];
+  if(!tc.length)return cards[0].rank==='K';
+  let top=tc[tc.length-1];
+  if(!top.faceUp)return false;
+  return isRed(top.suit)!==isRed(cards[0].suit)&&ri(cards[0].rank)===ri(top.rank)-1;
+}
+function flipTopTableau(col){
+  if(col==null)return;
+  let t=tableau[col];
+  if(t.length&&!t[t.length-1].faceUp){t[t.length-1].faceUp=true;score+=5;}
+}
+
+// ── Auto-move (double-tap) ────────────────────────────────────────────────────
+function autoMove(source,col,idx){
+  stopSolution();
+  let fromCol=col;
+  if(source==='waste'){
+    if(!waste.length)return;
+    let card=waste[waste.length-1];
+    for(let fi=0;fi<4;fi++){if(canPlaceOnFoundation(card,fi)){saveHistory();waste.pop();foundations[fi].push(card);score+=10;moves++;render();checkWin();return;}}
+    for(let tc=0;tc<7;tc++){if(canPlaceOnTableau([card],tc)){saveHistory();waste.pop();tableau[tc].push(card);score+=5;moves++;render();return;}}
+    return;
+  }
+  let card=tableau[col][idx];
+  if(!card||!card.faceUp)return;
+  let cards=tableau[col].slice(idx);
+  if(cards.length===1){
+    for(let fi=0;fi<4;fi++){
+      if(canPlaceOnFoundation(cards[0],fi)){
+        saveHistory();tableau[fromCol].splice(idx,1);flipTopTableau(fromCol);
+        foundations[fi].push(cards[0]);score+=10;moves++;render();checkWin();return;
+      }
+    }
+  }
+  for(let tc=0;tc<7;tc++){
+    if(tc===fromCol)continue;
+    if(canPlaceOnTableau(cards,tc)){
+      saveHistory();tableau[fromCol].splice(idx);flipTopTableau(fromCol);
+      tableau[tc].push(...cards);score+=5;moves++;render();return;
+    }
+  }
+}
+
+function autoMoveFromFoundation(fi){
+  stopSolution();
+  let f=foundations[fi];if(!f.length)return;
+  let card=f[f.length-1];
+  for(let tc=0;tc<7;tc++){if(canPlaceOnTableau([card],tc)){saveHistory();f.pop();tableau[tc].push(card);score+=5;moves++;render();return;}}
+}
+
+// ── Autocomplete ──────────────────────────────────────────────────────────────
+function allFaceUp(){
+  for(let col=0;col<7;col++)for(let card of tableau[col])if(!card.faceUp)return false;
+  return true;
+}
+function checkAutocomplete(){
+  if(autocompleteOffered)return;
+  if(allFaceUp()){autocompleteOffered=true;document.getElementById('autocomplete-popup').classList.add('show');}
+}
+function dismissAutocomplete(){document.getElementById('autocomplete-popup').classList.remove('show');}
+function doAutocomplete(){
+  document.getElementById('autocomplete-popup').classList.remove('show');
+  stopSolution();
+  let max=1000;
+  while(max-->0){
+    let moved=false;
+    if(waste.length){let c=waste[waste.length-1];for(let fi=0;fi<4;fi++){if(canPlaceOnFoundation(c,fi)){foundations[fi].push(waste.pop());score+=10;moves++;moved=true;break;}}}
+    for(let col=0;col<7;col++){if(!tableau[col].length)continue;let c=tableau[col][tableau[col].length-1];for(let fi=0;fi<4;fi++){if(canPlaceOnFoundation(c,fi)){foundations[fi].push(tableau[col].pop());score+=10;moves++;moved=true;break;}}}
+    if(!moved)break;
+    if(foundations.every(f=>f.length===13))break;
+  }
+  render();checkWin();
+}
+
+// ── DOM helpers ───────────────────────────────────────────────────────────────
+function makeImg(src){let i=document.createElement('img');i.src=src;i.draggable=false;return i;}
+function makeCardEl(card){
+  let el=document.createElement('div');
+  el.className='card '+(card.faceUp?'face-up':'face-down');
+  el.appendChild(makeImg(card.faceUp?cardImgUrl(card):BACK_URL));
+  return el;
+}
+
+// ── Render ────────────────────────────────────────────────────────────────────
+function render(){
+  document.getElementById('moves-display').textContent=moves;
+  document.getElementById('score-display').textContent=score;
+  renderStock();renderWaste();renderFoundations();renderTableau();
+  checkAutocomplete();checkWin();
+}
+
+function renderStock(){
+  let el=document.getElementById('stock');el.innerHTML='';
+  let slot=document.createElement('div');slot.className='slot';
+  if(stock.length){
+    let ce=makeCardEl({suit:'♠',rank:'A',faceUp:false});
+    ce.style.cssText='position:absolute;top:0;left:0';ce.onclick=drawCard;slot.appendChild(ce);
+    let cnt=document.createElement('div');
+    cnt.style.cssText='position:absolute;bottom:3px;right:5px;font-size:9px;color:rgba(255,255,255,0.55);pointer-events:none;text-shadow:0 1px 3px rgba(0,0,0,0.9)';
+    cnt.textContent=stock.length;slot.appendChild(cnt);
+  }else{
+    slot.innerHTML='<div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:26px;color:rgba(255,255,255,0.18);cursor:pointer">↺</div>';
+    slot.onclick=resetStock;
+  }
+  el.appendChild(slot);
+}
+
+function renderWaste(){
+  let el=document.getElementById('waste');el.innerHTML='';
+  let slot=document.createElement('div');slot.className='slot';
+  if(waste.length){
+    let card=waste[waste.length-1];
+    let ce=makeCardEl(card);ce.style.cssText='position:absolute;top:0;left:0';
+    ce.addEventListener('click',()=>onCardTap(cardKey(card),()=>autoMove('waste',null,waste.length-1)));
+    ce.addEventListener('touchend',e=>{e.preventDefault();onCardTap(cardKey(card),()=>autoMove('waste',null,waste.length-1));},{passive:false});
+    setupDrag(ce,'waste',null,waste.length-1);
+    slot.appendChild(ce);
+  }
+  el.appendChild(slot);
+}
+
+function renderFoundations(){
+  const F_OFFSET=2;
+  for(let i=0;i<4;i++){
+    let el=document.getElementById('f'+i);el.innerHTML='';
+    let f=foundations[i];
+    let totalH=98+Math.max(0,f.length-1)*F_OFFSET;
+    el.style.height=totalH+'px';el.style.position='relative';
+    let slot=document.createElement('div');slot.className='slot foundation';
+    slot.style.cssText='position:absolute;top:0;left:0;';
+    slot.innerHTML=`<span style="font-size:24px;opacity:0.12">${F_SUITS[i]}</span>`;
+    el.appendChild(slot);
+    for(let j=0;j<f.length;j++){
+      let card=f[j];let ce=makeCardEl(card);
+      ce.style.cssText=`position:absolute;top:${j*F_OFFSET}px;left:0;z-index:${j+1}`;
+      if(j===f.length-1){
+        ce.addEventListener('click',()=>onCardTap(cardKey(card),()=>autoMoveFromFoundation(i)));
+        ce.addEventListener('touchend',e=>{e.preventDefault();onCardTap(cardKey(card),()=>autoMoveFromFoundation(i));},{passive:false});
+        setupDrag(ce,'foundation',i,j);
+      }
+      el.appendChild(ce);
+    }
+  }
+}
+
+function renderTableau(){
+  const FD=16,FU=24;
+  for(let col=0;col<7;col++){
+    let el=document.getElementById('t'+col);el.innerHTML='';
+    el.style.height=calcColHeight(col)+'px';el.style.position='relative';
+    let slot=document.createElement('div');slot.className='slot';slot.style.cssText='position:absolute;top:0;left:0';el.appendChild(slot);
+    let y=0;
+    for(let row=0;row<tableau[col].length;row++){
+      let card=tableau[col][row];
+      let ce=makeCardEl(card);
+      ce.style.top=y+'px';ce.style.left='0';ce.style.zIndex=row+1;
+      if(card.faceUp){
+        (function(c,r,card){
+          ce.addEventListener('click',()=>onCardTap(cardKey(card),()=>autoMove('tableau',c,r)));
+          ce.addEventListener('touchend',e=>{e.preventDefault();onCardTap(cardKey(card),()=>autoMove('tableau',c,r));},{passive:false});
+          setupDrag(ce,'tableau',c,r);
+        })(col,row,card);
+      }
+      el.appendChild(ce);
+      if(row<tableau[col].length-1)y+=card.faceUp?FU:FD;
+    }
+  }
+}
+
+function calcColHeight(col){
+  const FD=16,FU=24;let off=0;
+  for(let i=0;i<tableau[col].length-1;i++)off+=tableau[col][i].faceUp?FU:FD;
+  return Math.max(98,off+98);
+}
+
+// ── Stock ─────────────────────────────────────────────────────────────────────
+function drawCard(){
+  stopSolution();
+  if(!stock.length)return;
+  saveHistory();let c=stock.pop();c.faceUp=true;waste.push(c);moves++;render();
+}
+function resetStock(){
+  stopSolution();
+  saveHistory();stock=waste.slice().reverse().map(c=>({...c,faceUp:false}));waste=[];
+  score=Math.max(0,score-100);moves++;render();
+}
+
+// ── Drag ──────────────────────────────────────────────────────────────────────
+function setupDrag(el,source,col,row){
+  el.addEventListener('mousedown',e=>startDrag(e,el,source,col,row));
+  el.addEventListener('touchstart',e=>startDrag(e,el,source,col,row),{passive:false});
+}
+
+function startDrag(e,originEl,source,col,row){
+  e.stopPropagation();
+  let cards=[],fromWaste=false,fromFoundation=false,foundationIdx=null;
+  if(source==='waste'){if(!waste.length)return;cards=[waste[waste.length-1]];fromWaste=true;}
+  else if(source==='foundation'){let f=foundations[col];if(!f.length)return;cards=[f[f.length-1]];fromFoundation=true;foundationIdx=col;}
+  else{cards=tableau[col].slice(row);if(!cards[0].faceUp)return;}
+
+  let cx0=e.touches?e.touches[0].clientX:e.clientX;
+  let cy0=e.touches?e.touches[0].clientY:e.clientY;
+  const THRESH=6;
+  let committed=false,ghost=null;
+  dragState={source,col,row,cards,fromWaste,fromFoundation,foundationIdx};
+
+  function commit(){
+    if(committed)return;committed=true;stopSolution();
+    dragSourceEls=[];
+    if(fromWaste||fromFoundation)dragSourceEls.push(originEl);
+    else{
+      let cardEls=Array.from(document.getElementById('t'+col).querySelectorAll('.card'));
+      for(let i=row;i<tableau[col].length;i++)if(cardEls[i])dragSourceEls.push(cardEls[i]);
+    }
+    dragSourceEls.forEach(el=>el.classList.add('drag-source'));
+    const FU=24;
+    ghost=document.createElement('div');
+    ghost.style.cssText=`position:fixed;z-index:9999;pointer-events:none;width:70px;height:${98+(cards.length-1)*FU}px`;
+    cards.forEach((card,i)=>{let ce=makeCardEl(card);ce.className+=' dragging';ce.style.cssText=`position:absolute;top:${i*FU}px;left:0;z-index:${i+1}`;ghost.appendChild(ce);});
+    let rect=originEl.getBoundingClientRect();
+    dragState.ox=cx0-rect.left;dragState.oy=cy0-rect.top;
+    ghost.style.left=rect.left+'px';ghost.style.top=rect.top+'px';
+    document.body.appendChild(ghost);
+  }
+
+  function onMove(ev){
+    let cx=ev.touches?ev.touches[0].clientX:ev.clientX;
+    let cy=ev.touches?ev.touches[0].clientY:ev.clientY;
+    if(!committed){if(Math.abs(cx-cx0)>THRESH||Math.abs(cy-cy0)>THRESH)commit();else return;}
+    ev.preventDefault();
+    ghost.style.left=(cx-dragState.ox)+'px';ghost.style.top=(cy-dragState.oy)+'px';
+  }
+
+  function onUp(ev){
+    document.removeEventListener('mousemove',onMove);document.removeEventListener('mouseup',onUp);
+    document.removeEventListener('touchmove',onMove);document.removeEventListener('touchend',onUp);
+    if(!committed){dragState=null;return;}
+    ghost.remove();
+    dragSourceEls.forEach(el=>el.classList.remove('drag-source'));dragSourceEls=[];
+    let cx=ev.touches?ev.changedTouches[0].clientX:ev.clientX;
+    let cy=ev.touches?ev.changedTouches[0].clientY:ev.clientY;
+    let dropped=false;
+
+    if(cards.length===1){
+      for(let fi=0;fi<4;fi++){
+        let r=document.getElementById('f'+fi).getBoundingClientRect();
+        if(cx>=r.left-4&&cx<=r.right+4&&cy>=r.top-4&&cy<=r.bottom+44){
+          if(canPlaceOnFoundation(cards[0],fi)){saveHistory();removeFromSource();foundations[fi].push(cards[0]);score+=10;moves++;dropped=true;render();checkWin();}
+          break;
+        }
+      }
+    }
+    if(!dropped){
+      for(let tc=0;tc<7;tc++){
+        let r=document.getElementById('t'+tc).getBoundingClientRect();
+        if(cx>=r.left&&cx<=r.right&&cy>=r.top&&cy<=r.bottom){
+          if(canPlaceOnTableau(cards,tc)){saveHistory();removeFromSource();tableau[tc].push(...cards);score+=5;moves++;dropped=true;render();}
+          break;
+        }
+      }
+    }
+    if(!dropped)render();
+    dragState=null;
+  }
+
+  document.addEventListener('mousemove',onMove);document.addEventListener('mouseup',onUp);
+  document.addEventListener('touchmove',onMove,{passive:false});document.addEventListener('touchend',onUp);
+}
+
+function removeFromSource(){
+  if(!dragState)return;
+  if(dragState.fromWaste)waste.pop();
+  else if(dragState.fromFoundation)foundations[dragState.foundationIdx].pop();
+  else{tableau[dragState.col].splice(dragState.row);flipTopTableau(dragState.col);}
+}
+
+// ── Win ───────────────────────────────────────────────────────────────────────
+function checkWin(){
+  if(!foundations.every(f=>f.length===13))return;
+  clearInterval(timer);stopSolution();
+  let m=Math.floor(seconds/60),s=seconds%60;
+  document.getElementById('win-stats').textContent=`${moves} moves · ${m}:${s<10?'0':''}${s} · Score: ${score}`;
+  document.getElementById('win-screen').classList.add('show');
+  launchConfetti();
+}
+function launchConfetti(){
+  const colors=['#d4af37','#c0392b','#1a5c38','#1e3a8a','#fff','#f39c12'];
+  for(let i=0;i<120;i++){
+    setTimeout(()=>{
+      let el=document.createElement('div');el.className='confetti-piece';
+      el.style.left=Math.random()*100+'vw';el.style.top='-10px';
+      el.style.background=colors[Math.floor(Math.random()*colors.length)];
+      el.style.animationDuration=(1.5+Math.random()*2.5)+'s';
+      el.style.transform=`rotate(${Math.random()*360}deg)`;
+      document.body.appendChild(el);setTimeout(()=>el.remove(),4000);
+    },Math.random()*1500);
+  }
+}
+
+document.body.addEventListener('touchmove',e=>e.preventDefault(),{passive:false});
+newGame();
+
+// ── PWA: inline manifest ─────────────────────────────────────────────────────
+const _manifest = {
+  name: "SolitAIre",
+  short_name: "SolitAIre",
+  description: "Klondike Solitaire with guaranteed winnable deals",
+  start_url: "./",
+  display: "standalone",
+  orientation: "portrait",
+  background_color: "#1a5c38",
+  theme_color: "#1a5c38",
+  icons: [
+    { src: "icon.png", sizes: "512x512", type: "image/png", purpose: "any maskable" }
+  ]
+};
+const _mBlob = new Blob([JSON.stringify(_manifest)], {type:'application/json'});
+const _mURL = URL.createObjectURL(_mBlob);
+document.getElementById('pwa-manifest').setAttribute('href', _mURL);
+
+// ── PWA: inline service worker ────────────────────────────────────────────────
+const _swCode = `
+const CACHE = 'solitaire-v1';
+const ASSETS = [self.location.href.replace('sw-inline.js',''), './icon.png'];
+self.addEventListener('install', e => {
+  e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).catch(()=>{}));
+  self.skipWaiting();
+});
+self.addEventListener('activate', e => {
+  e.waitUntil(caches.keys().then(keys =>
+    Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k)))
+  ));
+  self.clients.claim();
+});
+self.addEventListener('fetch', e => {
+  e.respondWith(caches.match(e.request).then(r => r || fetch(e.request).catch(()=>{})));
+});
+`;
+if('serviceWorker' in navigator){
+  const _swBlob = new Blob([_swCode], {type:'text/javascript'});
+  const _swURL = URL.createObjectURL(_swBlob);
+  navigator.serviceWorker.register(_swURL, {scope:'./'}).catch(()=>{});
+}
+</script>
+</body>
+</html>
