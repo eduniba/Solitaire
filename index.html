@@ -1,5 +1,6 @@
 <!-- 
-- only some figure have the special style
+- slow animation on win
+- github autoload
 - duplicate bug (can't replicate) 
 -->
 
@@ -8,10 +9,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-<meta http-equiv="Pragma" content="no-cache">
-<meta http-equiv="Expires" content="0">
-  <title>solitAIre</title>
+<title>solitAIre</title>
 <meta name="google" content="notranslate">
 <meta name="theme-color" content="#1a5c38">
 <meta name="mobile-web-app-capable" content="yes">
@@ -625,8 +623,8 @@ function buildCardEl(card) {
 
     const headerHTML = `
       <div style="display:flex;justify-content:space-between;align-items:flex-start;height:22%;">
-        <span style="font-size:${32*r}px;font-weight:900;line-height:0.8;letter-spacing:${card.rank==='10'?-6*r:-4*r}px;margin-left:${card.rank==='10'?-2*r:0}px">${card.rank}</span>
-        <div style="width:${28*r}px;height:${28*r}px;">${makeSuitSVG(card.suit,'100%','100%')}</div>
+        <span style="font-size:${32*r}px;font-weight:900;line-height:0.8;letter-spacing:${card.rank==='10'?-6*r:-4*r}px;margin-left:${card.rank==='10'?-2*r+2*r:2*r}px">${card.rank}</span>
+        <div style="width:${28*r}px;height:${28*r}px;margin-right:${2*r}px">${makeSuitSVG(card.suit,'100%','100%')}</div>
       </div>`;
 
     const bodyDiv = document.createElement('div');
