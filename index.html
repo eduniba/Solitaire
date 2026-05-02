@@ -1,9 +1,15 @@
+<!-- 
+- only some figure have the special style
+- duplicate bug (can't replicate) 
+-->
+
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" translate="no">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>SolitAIre</title>
+<title>solitAIre</title>
+<meta name="google" content="notranslate">
 <meta name="theme-color" content="#1a5c38">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -53,7 +59,7 @@
   .slot{width:var(--card-w);height:var(--card-h);border:2px dashed rgba(255,255,255,0.15);border-radius:var(--radius);position:relative;}
   .slot.foundation{display:flex;align-items:center;justify-content:center;}
   #spacer{flex:1;}
-  .card{width:var(--card-w);height:var(--card-h);border-radius:var(--radius);position:absolute;cursor:pointer;box-shadow:var(--shadow);-webkit-tap-highlight-color:transparent;overflow:hidden;}
+  .card{background: #fff;width:var(--card-w);height:var(--card-h);border-radius:var(--radius);position:absolute;cursor:pointer;box-shadow:var(--shadow);-webkit-tap-highlight-color:transparent;overflow:hidden;transition:top 0.12s ease,left 0.12s ease;}
   .card img{width:100%;height:100%;display:block;pointer-events:none;border-radius:var(--radius);}
   .card.face-up{cursor:grab;}
   .card.face-up:active{cursor:grabbing;}
@@ -99,24 +105,54 @@
     .header-right{gap:6px;}
     .header-left{gap:5px;}
   }
+
+  .popup-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.7);
+    z-index: 9999;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .popup-overlay.show {
+    display: flex;
+  }
+
+  .settings-box {
+    background: #fdfaf5;
+    border-radius: 12px;
+    padding: 30px;
+    width: 260px;
+    box-shadow: 0 24px 64px rgba(0,0,0,0.5);
+  }
+
+  .settings-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 15px;
+    padding: 10px;
+    background: rgba(0,0,0,0.03);
+    border-radius: 8px;
+  }
+
+  .settings-row .mode-label {
+    color: var(--felt-dark);
+    font-weight: bold;
+  }
 </style>
 </head>
 <body>
 <header>
   <div class="header-left">
-    <div class="mode-toggle">
-      <span class="mode-label" id="mode-label">Random</span>
-      <div class="toggle-track" id="mode-toggle" onclick="toggleMode()"><div class="toggle-thumb"></div></div>
-    </div>
-    <div class="mode-toggle" id="draw-toggle-wrap">
-      <span class="mode-label" id="draw-label">Draw 1</span>
-      <div class="toggle-track" id="draw-toggle" onclick="toggleDraw()"><div class="toggle-thumb"></div></div>
-    </div>
+    <button class="btn" style="font-size: 20px; padding: 4px 12px;" onclick="toggleSettings(true)">⚙</button>
   </div>
-  <h1 class="title">solitAIre</h1>
+  <h1 class="title">solit<span id="ai-cheat" style="-webkit-text-fill-color:inherit;cursor:pointer;user-select:none;">AI</span>re</h1>
   <div class="header-right">
     <button class="btn" onclick="undoMove()">⟲ Undo</button>
-    <button class="btn" onclick="newGame()">New Deal</button>
+    <button class="btn" onclick="newGame()">New Game</button>
   </div>
 </header>
 
@@ -183,10 +219,45 @@ const shuffle=a=>{for(let i=a.length-1;i>0;i--){let j=rnd(i+1);[a[i],a[j]]=[a[j]
 // ── Game state ────────────────────────────────────────────────────────────────
 let stock=[],waste=[],foundations=[[],[],[],[]],tableau=[[],[],[],[],[],[],[]];
 let moves=0,score=0,seconds=0,timer=null,history=[],dragState=null,dragSourceEls=[];
-let autocompleteOffered=false,winnableMode=false,gameWon=false,draw3Mode=false;
+let autocompleteOffered=false,winnableMode=true,gameWon=false,draw3Mode=false;
 let newGameRunning=false;
+let cardSimplified = window.innerWidth <= 600;
+let moveLock=false;
+let stuckMode='deadend'; // 'off' | 'deadend' | 'loopdetect'
+const faceImageCache = {}; // 'J_clubs' -> true | false, undefined = not yet checked
+let cardElCache = {}; // 'rank_suit' -> DOM element
 
-// ── Toggle ────────────────────────────────────────────────────────────────────
+// ── Suit SVG paths (from suits.svg, viewBox matches actual path coordinates) ──
+function makeSuitSVG(suit, w, h) {
+  const suits = {
+    '♠': { vb:'40 71 204 221', color:'#000', d:'M175.80 289.80 C174.92,290.68 166.46,291.00 143.99,291.00 C142.74,291.00 141.53,291.00 140.35,291.00 C119.48,291.01 111.60,291.01 110.85,288.69 C110.39,287.29 112.55,285.02 116.03,281.39 C116.35,281.06 116.69,280.71 117.03,280.35 C125.29,271.69 130.94,262.04 133.34,252.50 C135.33,244.61 136.39,233.82 135.47,230.91 C134.81,228.83 134.39,229.27 131.47,235.04 C129.68,238.59 126.33,243.63 124.03,246.24 C118.64,252.35 106.20,258.63 97.00,259.89 C70.38,263.53 44.43,240.95 42.26,212.28 C40.36,187.08 53.49,162.27 83.27,134.83 C104.03,115.70 126.12,92.80 134.50,81.71 C138.90,75.89 143.05,71.09 143.71,71.06 C144.38,71.03 145.39,71.87 145.96,72.93 C147.52,75.83 160.29,91.33 169.43,101.39 C173.87,106.29 184.48,116.55 193.00,124.21 C212.01,141.28 222.34,152.51 230.71,165.23 C238.16,176.54 241.61,184.44 243.58,194.77 C248.59,220.93 237.95,244.45 216.14,255.43 C194.45,266.35 166.62,257.35 156.56,236.16 C154.94,232.75 153.14,230.13 152.56,230.33 C151.10,230.84 151.77,244.02 153.64,251.50 C156.32,262.25 161.73,271.71 169.72,279.62 C173.72,283.59 177.00,287.23 177.00,287.72 C177.00,288.20 176.46,289.14 175.80,289.80 Z' },
+    '♣': { vb:'585 70 225 222', color:'#000', d:'M728.83 288.67 C728.49,290.39 726.61,290.52 697.42,290.76 C680.34,290.91 666.06,290.72 665.68,290.35 C664.02,288.69 665.48,286.22 672.39,278.99 C680.72,270.27 685.27,261.93 687.54,251.25 C689.09,243.92 689.50,231.00 688.18,231.00 C687.74,231.00 686.32,233.53 685.04,236.62 C679.35,250.34 659.46,262.74 642.80,262.94 C629.70,263.10 615.90,257.03 605.41,246.49 C597.14,238.18 593.48,231.28 591.20,219.68 C586.28,194.72 602.29,168.66 627.00,161.40 C633.29,159.56 643.80,159.12 652.39,160.34 L658.28 161.18 L654.67 156.77 C647.06,147.49 642.33,131.97 643.40,119.87 C645.16,100.08 655.32,84.91 672.50,76.42 C683.09,71.18 690.70,69.56 701.00,70.35 C722.72,72.00 739.50,84.70 747.72,105.72 C750.01,111.59 750.37,113.97 750.37,123.50 C750.37,132.99 750.01,135.42 747.75,141.20 C745.12,147.91 739.11,158.19 737.08,159.45 C734.30,161.17 736.57,161.54 742.25,160.29 C749.74,158.65 760.58,159.30 768.31,161.85 C793.33,170.11 808.83,197.56 802.43,222.28 C796.13,246.59 772.28,264.61 749.00,262.66 C732.27,261.25 715.49,250.36 709.18,236.79 C704.93,227.65 703.65,229.48 705.02,242.73 C706.57,257.71 711.78,268.89 722.23,279.67 C726.76,284.34 729.06,287.47 728.83,288.67 Z' },
+    '♥': { vb:'299 65 226 225', color:'#d32f2f', d:'M419.93 281.01 C417.00,285.41 414.27,289.00 413.85,289.00 C413.44,289.00 410.04,284.61 406.30,279.25 C393.74,261.22 384.27,250.33 356.32,221.77 C326.83,191.64 322.82,187.01 315.17,174.29 C299.28,147.84 299.42,116.23 315.54,93.45 C331.16,71.36 355.65,64.72 382.47,75.30 C393.57,79.68 402.63,88.61 409.23,101.67 L413.86 110.84 L417.43 103.30 C426.18,84.88 437.88,75.64 457.82,71.40 C475.18,67.71 493.45,73.34 506.00,86.24 C513.19,93.64 520.39,107.26 522.51,117.50 C524.60,127.57 524.40,141.10 522.01,150.59 C519.32,161.30 511.28,177.25 503.80,186.71 C500.41,190.99 485.41,207.10 470.46,222.50 C443.36,250.43 430.00,265.90 419.93,281.01 Z' },
+    '♦': { vb:'870 70 169 220', color:'#d32f2f', d:'M964.39 272.80 C959.04,281.21 954.33,288.30 953.92,288.55 C953.52,288.80 949.45,283.04 944.89,275.75 C926.57,246.49 902.31,215.06 880.02,191.71 C874.51,185.94 870.00,180.67 870.00,179.99 C870.00,179.31 874.12,174.45 879.15,169.19 C903.45,143.76 927.11,112.76 949.36,77.17 C953.39,70.72 954.39,69.96 955.39,72.57 C955.72,73.44 959.91,80.30 964.70,87.82 C982.39,115.61 1001.79,140.56 1026.78,167.66 L1038.16 180.00 L1028.21 190.75 C1002.01,219.05 983.18,243.27 964.39,272.80 Z' },
+  };
+  const s = suits[suit];
+  if (!s) return '';
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${s.vb}" width="${w}" height="${h}" style="display:block;"><path d="${s.d}" fill="${s.color}"/></svg>`;
+}
+
+
+function toggleSettings(show) {
+  const popup = document.getElementById('settings-popup');
+  if (show) {
+    popup.classList.add('show');
+  } else {
+    popup.classList.remove('show');
+  }
+}
+
+// Close popup if clicking outside the box
+window.onclick = function(event) {
+  const popup = document.getElementById('settings-popup');
+  if (event.target == popup) {
+    toggleSettings(false);
+  }
+}
+
 function toggleMode(){
   winnableMode=!winnableMode;
   document.getElementById('mode-toggle').classList.toggle('on',winnableMode);
@@ -194,7 +265,10 @@ function toggleMode(){
   // Hide draw toggle in winnable mode, force draw1
   const wrap=document.getElementById('draw-toggle-wrap');
   wrap.style.display=winnableMode?'none':'flex';
-  if(winnableMode){draw3Mode=false;document.getElementById('draw-toggle').classList.remove('on');document.getElementById('draw-label').textContent='Draw 1';}
+  if(winnableMode){
+    draw3Mode=false;document.getElementById('draw-toggle').classList.remove('on');
+    document.getElementById('draw-label').textContent='Draw 1';
+  }
 }
 function toggleDraw(){
   if(winnableMode)return;
@@ -209,10 +283,22 @@ function toggleDraw(){
 let lastTapKey='',lastTapTime=0;
 const DTAP=350;
 function cardKey(c){return c.rank+c.suit;}
-function onCardTap(key,cb){
-  let now=Date.now();
-  if(lastTapKey===key&&now-lastTapTime<DTAP){lastTapKey='';lastTapTime=0;cb();}
-  else{lastTapKey=key;lastTapTime=now;}
+function onCardTap(key, cb) {
+  if (singleTapMode) {
+    cb(); // Execute immediately
+    return;
+  }
+  
+  // Existing double-tap logic
+  let now = Date.now();
+  if (lastTapKey === key && now - lastTapTime < DTAP) {
+    lastTapKey = '';
+    lastTapTime = 0;
+    cb();
+  } else {
+    lastTapKey = key;
+    lastTapTime = now;
+  }
 }
 
 // ── 1000 guaranteed-winnable seeds (verified by lonelybot + Solvitaire) ────────
@@ -300,6 +386,7 @@ function newGame(){
     let m=Math.floor(seconds/60),s=seconds%60;
     // time-display removed
   },1000);
+  buildCardCache();
   render();
 }
 
@@ -325,24 +412,41 @@ function flipTopTableau(col){
 }
 
 // ── Auto-move (double-tap) ────────────────────────────────────────────────────
+
+let singleTapMode = true;
+
+function toggleTapMode() {
+  singleTapMode = !singleTapMode;
+  document.getElementById('tap-toggle').classList.toggle('on', singleTapMode);
+  document.getElementById('tap-label').textContent = singleTapMode ? 'Single Tap' : 'Double Tap';
+}
+
+function toggleCardGraphics() {
+  cardSimplified = !cardSimplified;
+  document.getElementById('card-label').textContent = cardSimplified ? 'Stylized Cards' : 'Normal Cards';
+  document.getElementById('card-toggle').classList.toggle('on', cardSimplified);
+  buildCardCache();
+  render();
+}
+
 function autoMove(source,col,idx){
-  
+  if(moveLock)return;moveLock=true;
   let fromCol=col;
   if(source==='waste'){
-    if(!waste.length)return;
+    if(!waste.length){moveLock=false;return;}
     let card=waste[waste.length-1];
-    for(let fi=0;fi<4;fi++){if(canPlaceOnFoundation(card,fi)){saveHistory();waste.pop();foundations[fi].push(card);score+=10;moves++;render();checkWin();return;}}
-    for(let tc=0;tc<7;tc++){if(canPlaceOnTableau([card],tc)){saveHistory();waste.pop();tableau[tc].push(card);score+=5;moves++;render();return;}}
-    return;
+    for(let fi=0;fi<4;fi++){if(canPlaceOnFoundation(card,fi)){saveHistory();waste.pop();foundations[fi].push(card);score+=10;moves++;render();checkWin();moveLock=false;return;}}
+    for(let tc=0;tc<7;tc++){if(canPlaceOnTableau([card],tc)){saveHistory();waste.pop();tableau[tc].push(card);score+=5;moves++;render();moveLock=false;return;}}
+    moveLock=false;return;
   }
   let card=tableau[col][idx];
-  if(!card||!card.faceUp)return;
+  if(!card||!card.faceUp){moveLock=false;return;}
   let cards=tableau[col].slice(idx);
   if(cards.length===1){
     for(let fi=0;fi<4;fi++){
       if(canPlaceOnFoundation(cards[0],fi)){
         saveHistory();tableau[fromCol].splice(idx,1);flipTopTableau(fromCol);
-        foundations[fi].push(cards[0]);score+=10;moves++;render();checkWin();return;
+        foundations[fi].push(cards[0]);score+=10;moves++;render();checkWin();moveLock=false;return;
       }
     }
   }
@@ -350,16 +454,18 @@ function autoMove(source,col,idx){
     if(tc===fromCol)continue;
     if(canPlaceOnTableau(cards,tc)){
       saveHistory();tableau[fromCol].splice(idx);flipTopTableau(fromCol);
-      tableau[tc].push(...cards);score+=5;moves++;render();return;
+      tableau[tc].push(...cards);score+=5;moves++;render();moveLock=false;return;
     }
   }
+  moveLock=false;
 }
 
 function autoMoveFromFoundation(fi){
-  
-  let f=foundations[fi];if(!f.length)return;
+  if(moveLock)return;moveLock=true;
+  let f=foundations[fi];if(!f.length){moveLock=false;return;}
   let card=f[f.length-1];
-  for(let tc=0;tc<7;tc++){if(canPlaceOnTableau([card],tc)){saveHistory();f.pop();tableau[tc].push(card);score+=5;moves++;render();return;}}
+  for(let tc=0;tc<7;tc++){if(canPlaceOnTableau([card],tc)){saveHistory();f.pop();tableau[tc].push(card);score+=5;moves++;render();moveLock=false;return;}}
+  moveLock=false;
 }
 
 // ── Autocomplete ──────────────────────────────────────────────────────────────
@@ -376,6 +482,75 @@ function checkAutocomplete(){
   }
 }
 function dismissAutocomplete(){document.getElementById('autocomplete-popup').classList.remove('show');}
+
+// ── Stuck detection ───────────────────────────────────────────────────────────
+function hasValidMoves(){
+  // Check every card in waste and stock
+  const wastePlusStock = [...waste, ...stock];
+  for(const c of wastePlusStock){
+    for(let fi=0;fi<4;fi++)if(canPlaceOnFoundation(c,fi))return true;
+    for(let tc=0;tc<7;tc++)if(canPlaceOnTableau([c],tc))return true;
+  }
+  // Check every face-up card/stack in tableau
+  for(let col=0;col<7;col++){
+    for(let row=0;row<tableau[col].length;row++){
+      const card=tableau[col][row];
+      if(!card.faceUp)continue;
+      const cards=tableau[col].slice(row);
+      if(row===tableau[col].length-1){
+        for(let fi=0;fi<4;fi++)if(canPlaceOnFoundation(card,fi))return true;
+      }
+      for(let tc=0;tc<7;tc++){
+        if(tc===col)continue;
+        if(canPlaceOnTableau(cards,tc))return true;
+      }
+    }
+  }
+  return false;
+}
+function showStuckToast(msg){
+  if(gameWon)return;
+  const t=document.getElementById('stuck-toast');
+  t.textContent=msg;
+  t.style.display='block';
+  setTimeout(()=>t.style.display='none',3500);
+}
+function checkStuck(){
+  if(stuckMode==='off')return;
+  if(gameWon)return;
+  if(!hasValidMoves()) showStuckToast('No moves available');
+}
+function checkLoop(){
+  if(stuckMode!=='loopdetect')return;
+  if(gameWon)return;
+  // Step 1: no waste card is playable
+  if(waste.length){
+    const c=waste[waste.length-1];
+    for(let fi=0;fi<4;fi++)if(canPlaceOnFoundation(c,fi))return;
+    for(let tc=0;tc<7;tc++)if(canPlaceOnTableau([c],tc))return;
+  }
+  // Step 2: find all tableau-to-tableau moves
+  const moves=[];
+  for(let sc=0;sc<7;sc++){
+    for(let row=0;row<tableau[sc].length;row++){
+      if(!tableau[sc][row].faceUp)continue;
+      const cards=tableau[sc].slice(row);
+      for(let dc=0;dc<7;dc++){
+        if(dc===sc)continue;
+        if(canPlaceOnTableau(cards,dc))moves.push({sc,row,dc,cards});
+      }
+    }
+  }
+  if(moves.length!==1)return;
+  // Step 3: simulate the move and check if it flips a card or reveals a foundation play
+  const {sc,row,cards}=moves[0];
+  const flipsCard=row>0&&!tableau[sc][row-1].faceUp;
+  const revealedCard=row>0?tableau[sc][row-1]:null;
+  const canGoToFoundation=revealedCard&&foundations.some((_,fi)=>canPlaceOnFoundation(revealedCard,fi));
+  if(!flipsCard&&!canGoToFoundation){
+    showStuckToast('Game seems stuck — consider a new game');
+  }
+}
 function doAutocomplete(){
   document.getElementById('autocomplete-popup').classList.remove('show');
   
@@ -391,55 +566,184 @@ function doAutocomplete(){
 
 // ── DOM helpers ───────────────────────────────────────────────────────────────
 function makeImg(src){let i=document.createElement('img');i.src=src;i.draggable=false;return i;}
-function makeCardEl(card){
-  let el=document.createElement('div');
-  el.className='card '+(card.faceUp?'face-up':'face-down');
-  el.appendChild(makeImg(card.faceUp?cardImgUrl(card):BACK_URL));
+
+function buildCardCache() {
+  cardElCache = {};
+  const suits = ['♠','♥','♦','♣'];
+  const ranks = ['A','2','3','4','5','6','7','8','9','10','J','Q','K'];
+  // Build face-up and face-down version for each card
+  suits.forEach(suit => ranks.forEach(rank => {
+    const card = { rank, suit, faceUp: true };
+    cardElCache[rank + suit + '_up']   = buildCardEl(card);
+    cardElCache[rank + suit + '_down'] = buildCardEl({ rank, suit, faceUp: false });
+  }));
+}
+
+function makeCardEl(card) {
+  if (cardSimplified) {
+    // Always build fresh in simplified mode — needs live DOM dimensions
+    return buildCardEl(card);
+  }
+  const key = card.rank + card.suit + (card.faceUp ? '_up' : '_down');
+  if (cardElCache[key]) {
+    return cardElCache[key].cloneNode(true);
+  }
+  return buildCardEl(card);
+}
+
+function buildCardEl(card) {
+  let el = document.createElement('div');
+  el.className = 'card ' + (card.faceUp ? 'face-up' : 'face-down');
+
+  if (!card.faceUp) {
+    el.appendChild(makeImg(BACK_URL));
+  } else if (cardSimplified) {
+    const pile = document.getElementById('t0') || document.getElementById('stock');
+    const w = pile?.offsetWidth > 0 ? 
+      parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--card-w')) || 
+      document.querySelector('.pile')?.offsetWidth || 70 : 70;
+    // Calculate actual pixel width from CSS min() expression
+    const testEl = document.createElement('div');
+    testEl.style.cssText = `width:var(--card-w);position:fixed;visibility:hidden;`;
+    document.body.appendChild(testEl);
+    const actualW = testEl.offsetWidth || 70;
+    document.body.removeChild(testEl);
+    const r = actualW / 70;
+    const isRed = ['♥','♦'].includes(card.suit);
+    const isFace = ['J','Q','K'].includes(card.rank);
+    const color = isRed ? '#d32f2f' : '#000';
+    el.style.background = '#fff';
+    el.style.display = 'flex';
+    el.style.flexDirection = 'column';
+    // el.style.padding = `${2*r}px`;
+    el.style.padding = `${2*r}px 0 0 0`; // Removed bottom padding
+    el.style.color = color;
+    el.style.fontFamily = "'Arial Black', sans-serif";
+
+    const headerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;height:22%;">
+        <span style="font-size:${32*r}px;font-weight:900;line-height:0.8;letter-spacing:${card.rank==='10'?-6*r:-4*r}px;margin-left:${card.rank==='10'?-2*r:0}px">${card.rank}</span>
+        <div style="width:${28*r}px;height:${28*r}px;">${makeSuitSVG(card.suit,'100%','100%')}</div>
+      </div>`;
+
+    const bodyDiv = document.createElement('div');
+    // bodyDiv.style.cssText = 'flex-grow:1;display:flex;justify-content:center;align-items:center;position:relative;overflow:hidden;';
+bodyDiv.style.cssText = `width:100%;flex-grow:1;display:flex;justify-content:center;align-items:center;position:relative;overflow:hidden;margin-top:10px;padding:-2px;`; // Added width:100%
+    if (isFace) {
+      const suitName = card.suit==='♣'?'clubs':card.suit==='♦'?'diamonds':card.suit==='♥'?'hearts':'spades';
+      const key = `${card.rank}_${suitName}`;
+      if (faceImageCache[key] === true) {
+        const img = document.createElement('img');
+        img.src = `${key}.png`;
+        img.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block;';
+        bodyDiv.appendChild(img);
+      } else {
+        // no image available — show normal card image instead
+        el.style.background = '';
+        el.style.display = '';
+        el.style.flexDirection = '';
+        el.style.padding = '';
+        el.style.color = '';
+        el.style.fontFamily = '';
+        el.appendChild(makeImg(cardImgUrl(card)));
+        return el;
+      }
+    } else {
+      bodyDiv.style.padding = `${4*r}px`;
+      bodyDiv.innerHTML = makeSuitSVG(card.suit, '100%', '100%');
+    }
+
+    el.innerHTML = headerHTML;
+    el.appendChild(bodyDiv);
+  } else {
+    el.appendChild(makeImg(cardImgUrl(card)));
+  }
   return el;
+}
+window.addEventListener('resize', () => { if (cardSimplified) render(); });
+
+function makeSimpleCardEl(card) {
+  const isRed = ['♥','♦'].includes(card.suit);
+  const isFace = ['J','Q','K'].includes(card.rank);
+  const color = isRed ? '#d32f2f' : '#000000';
+  const div = document.createElement('div');
+  div.style.cssText = `
+    width:100%;height:100%;background:#fff;border-radius:5px;
+    display:flex;flex-direction:column;padding:2px;box-sizing:border-box;
+    overflow:hidden;color:${color};font-family:'Arial Black',sans-serif;
+  `;
+  div.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;height:22%;">
+      <span style="font-size:32px;font-weight:900;line-height:0.8;letter-spacing:${card.rank==='10'?'-6px':'-4px'};margin-left:${card.rank==='10'?'-2px':'0'}">${card.rank}</span>
+      <span style="font-size:32px;font-weight:900;line-height:0.8;">${card.suit}</span>
+    </div>
+    <div style="flex-grow:1;display:flex;justify-content:center;align-items:center;position:relative;">
+      ${isFace ? `<div style="font-size:50px;font-weight:900;opacity:0.15;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%)">${card.rank}</div>` : ''}
+      <span style="font-size:85px;line-height:1;display:block;margin-top:-12px;text-align:center;">${card.suit}</span>
+    </div>
+  `;
+  return div;
 }
 
 // ── Render ────────────────────────────────────────────────────────────────────
+// Card elements are kept alive across renders. Each pile reconciles by key.
+
+// detach all card elements from their current parent, collect by key
+function detachAllCards() {
+  document.querySelectorAll('.card').forEach(el => {
+    if (el.parentNode) el.parentNode.removeChild(el);
+  });
+}
+
 function render(){
-  // moves-display and score-display removed
   renderStock();renderWaste();renderFoundations();renderTableau();
   checkAutocomplete();checkWin();
 }
 
 function renderStock(){
-  let el=document.getElementById('stock');el.innerHTML='';
-  let slot=document.createElement('div');slot.className='slot';
+  let el=document.getElementById('stock');
+  // Replace slot entirely each render to avoid accumulating event listeners
+  let oldSlot = el.querySelector('.slot');
+  if (oldSlot) oldSlot.remove();
+  let slot=document.createElement('div');slot.className='slot';el.appendChild(slot);
+
   if(stock.length){
     let ce=makeCardEl({suit:'♠',rank:'A',faceUp:false});
-    ce.style.cssText='position:absolute;top:0;left:0';ce.onclick=drawCard;slot.appendChild(ce);
+    ce.style.position='absolute';ce.style.top='0';ce.style.left='0';
+    ce.addEventListener('touchend',e=>{e.preventDefault();e.stopPropagation();drawCard();},{passive:false});
+    ce.addEventListener('click',e=>{e.stopPropagation();drawCard();});
+    slot.appendChild(ce);
     let cnt=document.createElement('div');
     cnt.style.cssText='position:absolute;bottom:3px;right:5px;font-size:9px;color:rgba(255,255,255,0.55);pointer-events:none;text-shadow:0 1px 3px rgba(0,0,0,0.9)';
     cnt.textContent=stock.length;slot.appendChild(cnt);
   }else{
-    const _recycleDiv=document.createElement('div');
-    _recycleDiv.style.cssText='position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:26px;color:rgba(255,255,255,0.18);cursor:pointer';
-    _recycleDiv.textContent='↺';
-    slot.appendChild(_recycleDiv);
-    slot.onclick=resetStock;
+    const rd=document.createElement('div');
+    rd.style.cssText='position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:26px;color:rgba(255,255,255,0.18);cursor:pointer';
+    rd.textContent='↺';slot.appendChild(rd);
+    slot.addEventListener('touchend',e=>{e.preventDefault();e.stopPropagation();resetStock();},{passive:false});
+    slot.addEventListener('click',e=>{e.stopPropagation();resetStock();});
   }
-  el.appendChild(slot);
 }
 
 function renderWaste(){
   document.getElementById('waste-area').classList.toggle('draw3',draw3Mode);
-  let el=document.getElementById('waste');el.innerHTML='';
-  let slot=document.createElement('div');slot.className='slot';
+  let el=document.getElementById('waste');
+  let slot=el.querySelector('.slot');
+  if(!slot){slot=document.createElement('div');slot.className='slot';el.appendChild(slot);}
+  slot.querySelectorAll('.card').forEach(c=>c.remove());
+  slot.style.position='relative';
+  slot.style.minHeight='var(--card-h)';
+
   if(waste.length){
     if(draw3Mode){
-      // Fan leftward: top card at right, older cards peek left beneath it
       const FAN=18;
       const visible=waste.slice(-3);
       const extra=(visible.length-1)*FAN;
       slot.style.width=(70+extra)+'px';
       visible.forEach((card,i)=>{
         let ce=makeCardEl(card);
-        // position from right: top card at right:0, others shift left
         const fromRight=(visible.length-1-i)*FAN;
-        ce.style.cssText=`position:absolute;top:0;right:${fromRight}px;z-index:${i+1}`;
+        ce.style.position='absolute';ce.style.top='0';ce.style.right=`${fromRight}px`;ce.style.zIndex=i+1;
         if(i===visible.length-1){
           ce.addEventListener('click',()=>onCardTap(cardKey(card),()=>autoMove('waste',null,waste.length-1)));
           ce.addEventListener('touchend',e=>{e.preventDefault();onCardTap(cardKey(card),()=>autoMove('waste',null,waste.length-1));},{passive:false});
@@ -448,34 +752,46 @@ function renderWaste(){
         slot.appendChild(ce);
       });
     }else{
+      slot.style.width='';
       let card=waste[waste.length-1];
-      let ce=makeCardEl(card);ce.style.cssText='position:absolute;top:0;left:0';
+      let ce=makeCardEl(card);
+      ce.style.position='absolute';ce.style.top='0';ce.style.left='0';
       ce.addEventListener('click',()=>onCardTap(cardKey(card),()=>autoMove('waste',null,waste.length-1)));
       ce.addEventListener('touchend',e=>{e.preventDefault();onCardTap(cardKey(card),()=>autoMove('waste',null,waste.length-1));},{passive:false});
       setupDrag(ce,'waste',null,waste.length-1);
       slot.appendChild(ce);
     }
+  }else{
+    slot.style.width='';
   }
-  el.appendChild(slot);
 }
 
 function renderFoundations(){
   const F_OFFSET=2;
   for(let i=0;i<4;i++){
-    let el=document.getElementById('f'+i);el.innerHTML='';
+    let el=document.getElementById('f'+i);
     let f=foundations[i];
     let totalH=98+Math.max(0,f.length-1)*F_OFFSET;
     el.style.height=totalH+'px';el.style.position='relative';
-    let slot=document.createElement('div');slot.className='slot foundation';
-    slot.style.cssText='position:absolute;top:0;left:0;';
-    const _suitSpan=document.createElement('span');
-    _suitSpan.style.cssText='font-size:24px;opacity:0.12';
-    _suitSpan.textContent=F_SUITS[i];
-    slot.appendChild(_suitSpan);
-    el.appendChild(slot);
+
+    // ensure slot exists
+    let slot=el.querySelector('.slot.foundation');
+    if(!slot){
+      slot=document.createElement('div');slot.className='slot foundation';
+      slot.style.cssText='position:absolute;top:0;left:0;';
+      const sp=document.createElement('span');
+      sp.style.cssText='font-size:24px;opacity:0.12';
+      sp.textContent=F_SUITS[i];
+      slot.appendChild(sp);
+      el.appendChild(slot);
+    }
+
+    // remove old cards
+    el.querySelectorAll('.card').forEach(c=>c.remove());
+
     for(let j=0;j<f.length;j++){
       let card=f[j];let ce=makeCardEl(card);
-      ce.style.cssText=`position:absolute;top:${j*F_OFFSET}px;left:0;z-index:${j+1}`;
+      ce.style.position='absolute';ce.style.top=`${j*F_OFFSET}px`;ce.style.left='0';ce.style.zIndex=j+1;
       if(j===f.length-1){
         ce.addEventListener('click',()=>onCardTap(cardKey(card),()=>autoMoveFromFoundation(i)));
         ce.addEventListener('touchend',e=>{e.preventDefault();onCardTap(cardKey(card),()=>autoMoveFromFoundation(i));},{passive:false});
@@ -489,9 +805,16 @@ function renderFoundations(){
 function renderTableau(){
   const FD=16,FU=24;
   for(let col=0;col<7;col++){
-    let el=document.getElementById('t'+col);el.innerHTML='';
+    let el=document.getElementById('t'+col);
     el.style.height=calcColHeight(col)+'px';el.style.position='relative';
-    let slot=document.createElement('div');slot.className='slot';slot.style.cssText='position:absolute;top:0;left:0';el.appendChild(slot);
+
+    // ensure slot exists
+    let slot=el.querySelector('.slot');
+    if(!slot){slot=document.createElement('div');slot.className='slot';slot.style.cssText='position:absolute;top:0;left:0';el.appendChild(slot);}
+
+    // remove old cards
+    el.querySelectorAll('.card').forEach(c=>c.remove());
+
     let y=0;
     for(let row=0;row<tableau[col].length;row++){
       let card=tableau[col][row];
@@ -518,15 +841,19 @@ function calcColHeight(col){
 
 // ── Stock ─────────────────────────────────────────────────────────────────────
 function drawCard(){
-  if(!stock.length)return;
+  if(moveLock)return;moveLock=true;
+  if(!stock.length){moveLock=false;return;}
   saveHistory();
   const n=draw3Mode?3:1;
   for(let i=0;i<n&&stock.length;i++){let c=stock.pop();c.faceUp=true;waste.push(c);}
   moves++;render();
+  if(!stock.length) checkStuck();
+  moveLock=false;
 }
 function resetStock(){
+  if(moveLock)return;moveLock=true;
   saveHistory();stock=waste.slice().reverse().map(c=>({...c,faceUp:false}));waste=[];
-  moves++;render();
+  moves++;render();checkStuck();checkLoop();moveLock=false;
 }
 
 // ── Drag ──────────────────────────────────────────────────────────────────────
@@ -536,6 +863,7 @@ function setupDrag(el,source,col,row){
 }
 
 function startDrag(e,originEl,source,col,row){
+  if(dragState)return; // prevent double-drag
   e.stopPropagation();
   let cards=[],fromWaste=false,fromFoundation=false,foundationIdx=null;
   if(source==='waste'){if(!waste.length)return;cards=[waste[waste.length-1]];fromWaste=true;}
@@ -550,17 +878,33 @@ function startDrag(e,originEl,source,col,row){
 
   function commit(){
     if(committed)return;committed=true;
+
+    // collect source card elements and make them invisible in place
     dragSourceEls=[];
-    if(fromWaste||fromFoundation)dragSourceEls.push(originEl);
-    else{
+    if(fromWaste||fromFoundation){
+      dragSourceEls.push(originEl);
+    } else {
       let cardEls=Array.from(document.getElementById('t'+col).querySelectorAll('.card'));
       for(let i=row;i<tableau[col].length;i++)if(cardEls[i])dragSourceEls.push(cardEls[i]);
     }
-    dragSourceEls.forEach(el=>el.classList.add('drag-source'));
+    dragSourceEls.forEach(el=>{ el.style.opacity='0'; el.style.pointerEvents='none'; });
+
     const FU=24;
+    const w = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--card-w')) ||
+              (document.querySelector('.card')?.offsetWidth) || 70;
+    const h = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--card-h')) ||
+              (document.querySelector('.card')?.offsetHeight) || 98;
+
     ghost=document.createElement('div');
-    ghost.style.cssText=`position:fixed;z-index:9999;pointer-events:none;width:70px;height:${98+(cards.length-1)*FU}px`;
-    cards.forEach((card,i)=>{let ce=makeCardEl(card);ce.className+=' dragging';ce.style.cssText=`position:absolute;top:${i*FU}px;left:0;z-index:${i+1}`;ghost.appendChild(ce);});
+    ghost.style.cssText=`position:fixed;z-index:9999;pointer-events:none;width:${w}px;height:${h+(cards.length-1)*FU}px;`;
+
+    // use real cached elements in ghost — cloneNode so originals stay in DOM
+    cards.forEach((card,i)=>{
+      let ce=makeCardEl(card);
+      ce.style.cssText=`position:absolute;top:${i*FU}px;left:0;z-index:${i+1};transition:none;`;
+      ghost.appendChild(ce);
+    });
+
     let rect=originEl.getBoundingClientRect();
     dragState.ox=cx0-rect.left;dragState.oy=cy0-rect.top;
     ghost.style.left=rect.left+'px';ghost.style.top=rect.top+'px';
@@ -578,9 +922,19 @@ function startDrag(e,originEl,source,col,row){
   function onUp(ev){
     document.removeEventListener('mousemove',onMove);document.removeEventListener('mouseup',onUp);
     document.removeEventListener('touchmove',onMove);document.removeEventListener('touchend',onUp);
+
     if(!committed){dragState=null;return;}
+    if(moveLock){
+      ghost.remove();
+      dragSourceEls.forEach(el=>{el.style.opacity='';el.style.pointerEvents='';});
+      dragSourceEls=[];dragState=null;return;
+    }
+    moveLock=true;
     ghost.remove();
-    dragSourceEls.forEach(el=>el.classList.remove('drag-source'));dragSourceEls=[];
+    // restore source opacity before render redraws
+    dragSourceEls.forEach(el=>{el.style.opacity='';el.style.pointerEvents='';});
+    dragSourceEls=[];
+
     let cx=ev.touches?ev.changedTouches[0].clientX:ev.clientX;
     let cy=ev.touches?ev.changedTouches[0].clientY:ev.clientY;
     let dropped=false;
@@ -598,13 +952,14 @@ function startDrag(e,originEl,source,col,row){
       for(let tc=0;tc<7;tc++){
         let r=document.getElementById('t'+tc).getBoundingClientRect();
         if(cx>=r.left&&cx<=r.right&&cy>=r.top&&cy<=r.bottom){
-          if(canPlaceOnTableau(cards,tc)){saveHistory();removeFromSource();tableau[tc].push(...cards);score+=5;moves++;dropped=true;render();}
+          if(canPlaceOnTableau(cards,tc)){saveHistory();removeFromSource();tableau[tc].push(...cards);score+=5;moves++;dropped=true;render();checkStuck();}
           break;
         }
       }
     }
     if(!dropped)render();
     dragState=null;
+    moveLock=false;
   }
 
   document.addEventListener('mousemove',onMove);document.addEventListener('mouseup',onUp);
@@ -641,11 +996,199 @@ function launchConfetti(){
       document.body.appendChild(el);setTimeout(()=>el.remove(),4000);
     },Math.random()*1500);
   }
+  launchCardExplosion();
 }
 
+function launchCardExplosion(){
+  const suits=['♠','♥','♦','♣'];
+  const ranks=['A','2','3','4','5','6','7','8','9','10','J','Q','K'];
+  const red=new Set(['♥','♦']);
+  const w=document.querySelector('.card')?.offsetWidth||60;
+  const h=document.querySelector('.card')?.offsetHeight||84;
+  let delay=0;
+
+  for(let fi=0;fi<4;fi++){
+    const suit=suits[fi];
+    const isRed=red.has(suit);
+    for(let ri=ranks.length-1;ri>=0;ri--){
+      const rank=ranks[ri];
+      const cardCount=ri+1;
+      ;(function(rank,suit,isRed,fi,cardCount,d){
+        setTimeout(()=>{
+          // pop top card from foundation state and re-render pile
+          if(foundations[fi].length>0) foundations[fi].pop();
+          renderFoundations();
+
+          // use the real card element from cache
+          const card={rank,suit,faceUp:true};
+          const el=makeCardEl(card);
+          const rect2=document.getElementById('f'+fi).getBoundingClientRect();
+          const sx2=rect2.left+rect2.width/2;
+          const sy2=rect2.top+rect2.height/2;
+          el.style.position='fixed';
+          el.style.zIndex='9998';
+          el.style.pointerEvents='none';
+          el.style.transition='none';
+          el.style.left=(sx2-w/2)+'px';
+          el.style.top=(sy2-h/2)+'px';
+          document.body.appendChild(el);
+
+          let x=sx2-w/2,y=sy2-h/2;
+          let vx=(Math.random()-0.5)*16;
+          let vy=-(Math.random()*14+4);
+          let angle=0;
+          const spin=(Math.random()-0.5)*20;
+          const gravity=0.55;
+          let last=performance.now();
+
+          function step(now){
+            const dt=Math.min((now-last)/16,3);last=now;
+            vy+=gravity*dt;x+=vx*dt;y+=vy*dt;angle+=spin*dt;
+            el.style.left=x+'px';el.style.top=y+'px';el.style.transform=`rotate(${angle}deg)`;
+            const bottom=window.innerHeight-h;
+            if(y>bottom){y=bottom;vy*=-0.5;vx*=0.82;}
+            if(x<-w-10||x>window.innerWidth+10||(Math.abs(vy)<0.4&&y>=bottom-1)){el.remove();return;}
+            requestAnimationFrame(step);
+          }
+          requestAnimationFrame(step);
+        },d);
+      })(rank,suit,isRed,fi,cardCount,delay);
+      delay+=70;
+    }
+  }
+}
+
+// ── Secret cheat code ─────────────────────────────────────────────────────────
+let _cheatBuffer='';
+const _CHEAT_EASY='deal';      // instantly deal a near-win game
+const _CHEAT_WIN='vegas';      // instantly win
+
+document.addEventListener('keydown',e=>{
+  if(e.ctrlKey||e.metaKey||e.altKey)return;
+  _cheatBuffer=(_cheatBuffer+e.key.toLowerCase()).slice(-8);
+  if(_cheatBuffer.endsWith(_CHEAT_WIN)){
+    _cheatBuffer='';
+    // autocomplete the game
+    saveHistory();
+    let allCards=[...waste,...stock];
+    for(let col=0;col<7;col++)allCards.push(...tableau[col]);
+    tableau=[[],[],[],[],[],[],[]];waste=[];stock=[];
+    foundations=F_SUITS.map(suit=>RANKS.map(rank=>({suit,rank,faceUp:true})));
+    moves++;buildCardCache();render();checkWin();
+  } else if(_cheatBuffer.endsWith(_CHEAT_EASY)){
+    _cheatBuffer='';
+    // deal a game where only the top card of each tableau column is face-down
+    // and the foundation already has 2-K filled — just place 4 Aces to win
+    newGame();
+    // move all but top card of each column to foundations leaving easy plays
+    saveHistory();
+    const suits=['♠','♦','♣','♥'];
+    foundations=suits.map((suit,fi)=>RANKS.slice(0,12).map(rank=>({suit,rank,faceUp:true})));
+    // put the 4 kings on top of tableau cols 0-3 face up for easy drag
+    tableau=[[],[],[],[],[],[],[]];
+    suits.forEach((suit,i)=>{tableau[i]=[{suit,rank:'K',faceUp:true}];});
+    waste=[];stock=[];
+    buildCardCache();render();
+  }
+});
+
+
+// ── Long press on "AI" in title = cheat win ───────────────────────────────────
+(function(){
+  let _pressTimer=null;
+  function triggerCheat(){
+    saveHistory();
+    let allCards=[...waste,...stock];
+    for(let col=0;col<7;col++)allCards.push(...tableau[col]);
+    tableau=[[],[],[],[],[],[],[]];waste=[];stock=[];
+    foundations=F_SUITS.map(suit=>RANKS.map(rank=>({suit,rank,faceUp:true})));
+    moves++;buildCardCache();render();checkWin();
+  }
+  function startPress(e){ e.preventDefault(); _pressTimer=setTimeout(triggerCheat,800); }
+  function cancelPress(){ clearTimeout(_pressTimer); _pressTimer=null; }
+  document.addEventListener('DOMContentLoaded',()=>{
+    const el=document.getElementById('ai-cheat');
+    el.addEventListener('mousedown',startPress);
+    el.addEventListener('touchstart',startPress,{passive:false});
+    el.addEventListener('mouseup',cancelPress);
+    el.addEventListener('mouseleave',cancelPress);
+    el.addEventListener('touchend',cancelPress);
+    el.addEventListener('touchcancel',cancelPress);
+  });
+})();
+
 document.body.addEventListener('touchmove',e=>e.preventDefault(),{passive:false});
-newGame();
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('mode-toggle').classList.toggle('on', winnableMode);
+  document.getElementById('mode-label').textContent = winnableMode ? 'Winnable' : 'Random';
+  document.getElementById('draw-toggle-wrap').style.display = winnableMode ? 'none' : 'flex';
+  document.getElementById('card-toggle').classList.toggle('on', cardSimplified);
+  document.getElementById('card-label').textContent = cardSimplified ? 'Stylized Cards' : 'Normal Cards';
+});
+
+function preloadFaceImages(cb) {
+  const faces = ['J','Q','K'];
+  const suitNames = ['clubs','diamonds','hearts','spades'];
+  let pending = faces.length * suitNames.length;
+  faces.forEach(rank => suitNames.forEach(suit => {
+    const key = `${rank}_${suit}`;
+    const img = new Image();
+    img.onload  = () => { faceImageCache[key] = true;  if(--pending===0) cb(); };
+    img.onerror = () => { faceImageCache[key] = false; if(--pending===0) cb(); };
+    img.src = `${key}.png`;
+  }));
+}
+
+preloadFaceImages(() => {
+  newGame();
+});
 if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
 </script>
+<div id="settings-popup" class="popup-overlay">
+  <div class="settings-box">
+    <div class="ac-title" style="margin-bottom: 20px;">Game Settings</div>
+    
+    <div class="settings-row">
+      <span class="mode-label" id="tap-label">Double Tap</span>
+      <div class="toggle-track" id="tap-toggle" onclick="toggleTapMode()">
+        <div class="toggle-thumb"></div>
+      </div>
+    </div>
+
+    <div class="settings-row">
+      <span class="mode-label" id="card-label">Normal Cards</span>
+      <div class="toggle-track" id="card-toggle" onclick="toggleCardGraphics()">
+        <div class="toggle-thumb"></div>
+      </div>
+    </div>
+
+    <div class="settings-row">
+      <span class="mode-label" id="mode-label">Random</span>
+      <div class="toggle-track" id="mode-toggle" onclick="toggleMode()">
+        <div class="toggle-thumb"></div>
+      </div>
+    </div>
+
+    <div class="settings-row" id="draw-toggle-wrap">
+      <span class="mode-label" id="draw-label">Draw 1</span>
+      <div class="toggle-track" id="draw-toggle" onclick="toggleDraw()">
+        <div class="toggle-thumb"></div>
+      </div>
+    </div>
+
+    <div class="settings-row">
+      <span class="mode-label">Stuck detection</span>
+      <select id="stuck-select" onchange="stuckMode=this.value" style="background:var(--felt,#1a6b3a);color:#fff;border:1px solid rgba(255,255,255,0.2);border-radius:6px;padding:4px 8px;font-size:12px;cursor:pointer;outline:none;">
+        <option value="off">Off</option>
+        <option value="deadend" selected>Dead End</option>
+        <option value="loopdetect">Loop Detect</option>
+      </select>
+    </div>
+
+    <button class="win-btn" style="margin-top: 20px; width: 100%;" onclick="toggleSettings(false)">Close</button>
+  </div>
+</div>
+<div id="stuck-toast" style="display:none;position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.8);color:#fff;padding:10px 20px;border-radius:20px;font-size:12px;letter-spacing:1px;z-index:9999;">No moves available</div>
 </body>
 </html>
