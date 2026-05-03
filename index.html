@@ -1,6 +1,7 @@
 <!-- 
-- slow animation on win
-- github autoload
+- slow animation on win on mobile
+- different style while dragging for number and pip
+- github autoload: clear cache with lock button
 - duplicate bug (can't replicate) 
 -->
 
@@ -227,6 +228,7 @@ let moveLock=false;
 let stuckMode='deadend'; // 'off' | 'deadend' | 'loopdetect'
 const faceImageCache = {}; // 'J_clubs' -> true | false, undefined = not yet checked
 let cardElCache = {}; // 'rank_suit' -> DOM element
+let cardW = 70;
 
 // ── Suit SVG paths (from suits.svg, viewBox matches actual path coordinates) ──
 function makeSuitSVG(suit, w, h) {
@@ -285,6 +287,7 @@ let lastTapKey='',lastTapTime=0;
 const DTAP=350;
 function cardKey(c){return c.rank+c.suit;}
 function onCardTap(key, cb) {
+  if(moveLock) return;
   if (singleTapMode) {
     cb(); // Execute immediately
     return;
@@ -623,13 +626,13 @@ function buildCardEl(card) {
 
     const headerHTML = `
       <div style="display:flex;justify-content:space-between;align-items:flex-start;height:22%;">
-        <span style="font-size:${32*r}px;font-weight:900;line-height:0.8;letter-spacing:${card.rank==='10'?-6*r:-4*r}px;margin-left:${card.rank==='10'?-2*r+2*r:2*r}px">${card.rank}</span>
+        <span style="font-size:${32*r}px;font-weight:900;line-height:0.8;color:${color};font-family:'Arial Black',sans-serif;letter-spacing:${card.rank==='10'?-6*r:-4*r}px;margin-left:${card.rank==='10'?-2*r+2*r:2*r}px">${card.rank}</span>
         <div style="width:${28*r}px;height:${28*r}px;margin-right:${2*r}px">${makeSuitSVG(card.suit,'100%','100%')}</div>
       </div>`;
 
     const bodyDiv = document.createElement('div');
     // bodyDiv.style.cssText = 'flex-grow:1;display:flex;justify-content:center;align-items:center;position:relative;overflow:hidden;';
-bodyDiv.style.cssText = `width:100%;flex-grow:1;display:flex;justify-content:center;align-items:center;position:relative;overflow:hidden;margin-top:10px;padding:-2px;`; // Added width:100%
+    bodyDiv.style.cssText = `width:100%;flex-grow:1;display:flex;justify-content:center;align-items:center;position:relative;overflow:hidden;margin-top:10px;padding:-2px;`; // Added width:100%
     if (isFace) {
       const suitName = card.suit==='♣'?'clubs':card.suit==='♦'?'diamonds':card.suit==='♥'?'hearts':'spades';
       const key = `${card.rank}_${suitName}`;
@@ -690,7 +693,13 @@ function makeSimpleCardEl(card) {
 // Card elements are kept alive across renders. Each pile reconciles by key.
 
 // detach all card elements from their current parent, collect by key
+function updateCardW() {
+  const el = document.getElementById('t0') || document.getElementById('stock');
+  if (el && el.offsetWidth > 0) cardW = el.offsetWidth;
+}
+
 function detachAllCards() {
+  updateCardW();
   document.querySelectorAll('.card').forEach(el => {
     if (el.parentNode) el.parentNode.removeChild(el);
   });
@@ -880,7 +889,6 @@ function startDrag(e,originEl,source,col,row){
   function commit(){
     if(committed)return;committed=true;
 
-    // collect source card elements and make them invisible in place
     dragSourceEls=[];
     if(fromWaste||fromFoundation){
       dragSourceEls.push(originEl);
@@ -888,28 +896,22 @@ function startDrag(e,originEl,source,col,row){
       let cardEls=Array.from(document.getElementById('t'+col).querySelectorAll('.card'));
       for(let i=row;i<tableau[col].length;i++)if(cardEls[i])dragSourceEls.push(cardEls[i]);
     }
-    dragSourceEls.forEach(el=>{ el.style.opacity='0'; el.style.pointerEvents='none'; });
 
-    const FU=24;
-    const w = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--card-w')) ||
-              (document.querySelector('.card')?.offsetWidth) || 70;
-    const h = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--card-h')) ||
-              (document.querySelector('.card')?.offsetHeight) || 98;
+    const rect=originEl.getBoundingClientRect();
+    dragState.ox=cx0-rect.left;
+    dragState.oy=cy0-rect.top;
 
-    ghost=document.createElement('div');
-    ghost.style.cssText=`position:fixed;z-index:9999;pointer-events:none;width:${w}px;height:${h+(cards.length-1)*FU}px;`;
-
-    // use real cached elements in ghost — cloneNode so originals stay in DOM
-    cards.forEach((card,i)=>{
-      let ce=makeCardEl(card);
-      ce.style.cssText=`position:absolute;top:${i*FU}px;left:0;z-index:${i+1};transition:none;`;
-      ghost.appendChild(ce);
+    const FU=24*cardW/70;
+    dragSourceEls.forEach((el,i)=>{
+      el.style.transition='none';
+      el.style.position='fixed';
+      el.style.zIndex=9999+i;
+      el.style.width=cardW+'px';
+      const r=el.getBoundingClientRect();
+      el.style.left=r.left+'px';
+      el.style.top=r.top+'px';
+      document.body.appendChild(el);
     });
-
-    let rect=originEl.getBoundingClientRect();
-    dragState.ox=cx0-rect.left;dragState.oy=cy0-rect.top;
-    ghost.style.left=rect.left+'px';ghost.style.top=rect.top+'px';
-    document.body.appendChild(ghost);
   }
 
   function onMove(ev){
@@ -917,7 +919,11 @@ function startDrag(e,originEl,source,col,row){
     let cy=ev.touches?ev.touches[0].clientY:ev.clientY;
     if(!committed){if(Math.abs(cx-cx0)>THRESH||Math.abs(cy-cy0)>THRESH)commit();else return;}
     ev.preventDefault();
-    ghost.style.left=(cx-dragState.ox)+'px';ghost.style.top=(cy-dragState.oy)+'px';
+    const FU=24*cardW/70;
+    dragSourceEls.forEach((el,i)=>{
+      el.style.left=(cx-dragState.ox)+'px';
+      el.style.top=(cy-dragState.oy+i*FU)+'px';
+    });
   }
 
   function onUp(ev){
@@ -926,14 +932,16 @@ function startDrag(e,originEl,source,col,row){
 
     if(!committed){dragState=null;return;}
     if(moveLock){
-      ghost.remove();
+      // ghost.remove();
       dragSourceEls.forEach(el=>{el.style.opacity='';el.style.pointerEvents='';});
-      dragSourceEls=[];dragState=null;return;
+      dragSourceEls.forEach(el=>{if(el.parentNode===document.body)el.parentNode.removeChild(el);});
+      dragSourceEls=[];dragState=null;render();return;
     }
     moveLock=true;
-    ghost.remove();
+    // ghost.remove();
     // restore source opacity before render redraws
     dragSourceEls.forEach(el=>{el.style.opacity='';el.style.pointerEvents='';});
+    dragSourceEls.forEach(el=>{if(el.parentNode===document.body)el.parentNode.removeChild(el);});
     dragSourceEls=[];
 
     let cx=ev.touches?ev.changedTouches[0].clientX:ev.clientX;
@@ -997,7 +1005,7 @@ function launchConfetti(){
       document.body.appendChild(el);setTimeout(()=>el.remove(),4000);
     },Math.random()*1500);
   }
-  launchCardExplosion();
+  // launchCardExplosion();
 }
 
 function launchCardExplosion(){
